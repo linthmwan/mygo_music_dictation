@@ -89,8 +89,10 @@
     font-size: 17px; font-weight: 700;
   }
   .slot .sol { font-size: 11px; font-weight: 500; color: var(--muted); }
-  .slot.current { border-color: var(--accent); border-style: solid; background: #eef1ff; }
   .slot.filled { border-style: solid; border-color: #c9d2f5; }
+  .slot.current { border-color: var(--accent); border-style: solid; background: #eef1ff;
+    box-shadow: 0 0 0 3px rgba(79,109,245,.30); }
+  .slot { cursor: pointer; }
   .slot.correct { border-color: var(--green); background: #e9f9f1; color: var(--green); }
   .slot.wrong { border-color: var(--red); background: #fdeeee; color: var(--red); }
   .slot.wrong .yours { font-size: 11px; font-weight: 500; color: var(--muted); text-decoration: line-through; }
@@ -626,8 +628,10 @@ let padMode = (() => {
   catch { return 'buttons'; }
 })();
 let currentQ = null;     // {seq, slots, pad, info?, twoStage?}
-let answers = [];        // 已選的 pad 選項
+let answers = [];        // 定長陣列，answers[i] 為第 i 格的選項或 null（可任意位置填／改）
+let cursor = 0;          // 目前作答的格子位置（左右鍵移動、點按鈕替換此格）
 let pendingRoot = null;  // 兩段式作答（和弦名稱）：已按根音、待按性質
+const filledCount = () => answers.filter(a => a != null).length;
 let phase = 'idle';      // idle | playing | answering | checked
 let playToken = 0;
 let session = { correct: 0, total: 0, streak: 0 };
@@ -704,7 +708,7 @@ const clampCount = () => Math.min(10, Math.max(1, +countInput.value || 3));
 const MODES = {
   single: {
     statHead: '音',
-    hint: '建議初學從 C4–C5、每題 2～3 個音、不含黑鍵開始。設定變更會在「下一題」生效。',
+    hint: '建議初學從 C4–C5、每題 2～3 個音開始。作答：點按鈕或鋼琴鍵填入游標格，← → 或點格子可移到任一格修改，Backspace 刪除游標格。',
     statDisplay: k => '<b>' + k + '</b>・' + (SOLFEGE[k.replace(/-?\d+$/, '')] || ''),
     orderIndex: k => midiOfName(k),
     build() {
@@ -928,7 +932,8 @@ function newQuestion() {
     return false;
   }
   currentQ = q;
-  answers = [];
+  answers = new Array(q.slots.length).fill(null);
+  cursor = 0;
   pendingRoot = null;
   phase = 'idle';
   buildSlots();
@@ -986,30 +991,51 @@ function playQuestion() {
 // ---------- 介面 ----------
 function buildSlots() {
   slotsEl.innerHTML = '';
-  currentQ.slots.forEach(() => {
+  currentQ.slots.forEach((s, i) => {
     const d = document.createElement('div');
     d.className = 'slot';
+    // 點格子＝把游標移到該格（之後按按鈕／鋼琴鍵就替換這格）
+    d.addEventListener('click', () => {
+      if (phase !== 'answering') return;
+      cursor = i;
+      if (pendingRoot) { pendingRoot = null; buildPad(); }
+      renderSlots();
+      updateButtons();
+    });
     slotsEl.appendChild(d);
   });
   renderSlots();
 }
 
 function renderSlots() {
+  const showCursor = (phase === 'answering');
   [...slotsEl.children].forEach((d, i) => {
     d.classList.remove('current', 'filled');
-    if (i < answers.length) {
+    if (i === cursor && pendingRoot && showCursor) {
+      // 兩段式作答中：此格已選根音、待選性質
+      d.classList.add('filled', 'current');
+      d.innerHTML = pendingRoot.label + '<span class="sol">選性質…</span>';
+      return;
+    }
+    if (answers[i] != null) {
       d.classList.add('filled');
       d.innerHTML = answers[i].label +
         (answers[i].sub ? '<span class="sol">' + answers[i].sub + '</span>' : '');
-    } else if (i === answers.length && pendingRoot) {
-      // 兩段式作答中：已選根音、待選性質
-      d.classList.add('current');
-      d.innerHTML = pendingRoot.label + '<span class="sol">選性質…</span>';
     } else {
       d.innerHTML = '<span style="color:#c2c8da">' + (i + 1) + '</span>';
-      if (i === answers.length && phase === 'answering') d.classList.add('current');
     }
+    if (i === cursor && showCursor) d.classList.add('current');
   });
+}
+
+// 把游標移到下一個空格（環狀尋找）；全填滿則往後一格、停在最後一格
+function advanceCursor() {
+  const n = currentQ.slots.length;
+  for (let k = 1; k <= n; k++) {
+    const j = (cursor + k) % n;
+    if (answers[j] == null) { cursor = j; return; }
+  }
+  cursor = Math.min(cursor + 1, n - 1);
 }
 
 function buildPad() {
@@ -1038,8 +1064,8 @@ function buildTwoStagePad() {
           flash(b);
           return;
         }
-        if (phase !== 'answering' || answers.length >= currentQ.slots.length) return;
-        pendingRoot = r;
+        if (phase !== 'answering') return;
+        pendingRoot = r;       // 可隨時重選根音，覆蓋游標格
         flash(b);
         buildPad();
         renderSlots();
@@ -1054,8 +1080,9 @@ function buildTwoStagePad() {
       b.innerHTML = name + '<small>' + q.short + '</small>';
       b.addEventListener('click', () => {
         if (phase !== 'answering') return;
-        answers.push({ key: name, label: name, sub: q.short });
+        answers[cursor] = { key: name, label: name, sub: q.short };
         pendingRoot = null;
+        advanceCursor();
         buildPad();
         renderSlots();
         updateButtons();
@@ -1121,13 +1148,13 @@ function answerOpt(opt, btn) {
     return;
   }
   if (phase !== 'answering') return;
-  if (answers.length >= currentQ.slots.length) return; // 填滿後請按「送出答案」或刪除重選
   if (btnSoundChk.checked && opt.midi != null) {
     ensureAudio();
     playTone(opt.midi, ctx.currentTime, 0.5);
   }
   flash(btn);
-  answers.push(opt);
+  answers[cursor] = opt;   // 直接替換游標所在的格子
+  advanceCursor();
   renderSlots();
   updateButtons();
 }
@@ -1175,10 +1202,18 @@ function undo() {
     pendingRoot = null;
     buildPad();
     renderSlots();
+    updateButtons();
     return;
   }
-  if (!answers.length) return;
-  answers.pop();
+  // 依游標位置刪除：當前格有內容就清掉它；當前格已空則退到前一格再清（類似文字刪除）
+  if (answers[cursor] != null) {
+    answers[cursor] = null;
+  } else if (cursor > 0) {
+    cursor--;
+    answers[cursor] = null;
+  } else {
+    return;
+  }
   if (currentQ.twoStage) buildPad();
   renderSlots();
   updateButtons();
@@ -1187,8 +1222,8 @@ function undo() {
 function updateButtons() {
   playBtn.disabled = (phase === 'playing');
   replayBtn.disabled = (phase === 'idle' || phase === 'playing' || !currentQ);
-  undoBtn.disabled = !(phase === 'answering' && (answers.length > 0 || pendingRoot));
-  submitBtn.disabled = !(phase === 'answering' && currentQ && answers.length === currentQ.slots.length);
+  undoBtn.disabled = !(phase === 'answering' && (filledCount() > 0 || pendingRoot));
+  submitBtn.disabled = !(phase === 'answering' && currentQ && filledCount() === currentQ.slots.length);
   // 作答中可按；對完答案後保持可按（試聽模式）
   padEl.querySelectorAll('button').forEach(b =>
     b.disabled = !(phase === 'answering' || phase === 'checked') || !!b.dataset.locked);
@@ -1254,6 +1289,7 @@ function resetQuestion() {
   playToken++;             // 讓進行中的播放排程失效
   currentQ = null;
   answers = [];
+  cursor = 0;
   pendingRoot = null;
   phase = 'idle';
   slotsEl.innerHTML = '';
@@ -1334,6 +1370,22 @@ document.addEventListener('keydown', e => {
   switch (e.key) {
     case 'r': case 'R':
       if (!replayBtn.disabled) { e.preventDefault(); replayBtn.click(); }
+      break;
+    case 'ArrowLeft':
+      if (phase === 'answering' && currentQ) {
+        e.preventDefault();
+        if (pendingRoot) { pendingRoot = null; buildPad(); }
+        cursor = Math.max(0, cursor - 1);
+        renderSlots(); updateButtons();
+      }
+      break;
+    case 'ArrowRight':
+      if (phase === 'answering' && currentQ) {
+        e.preventDefault();
+        if (pendingRoot) { pendingRoot = null; buildPad(); }
+        cursor = Math.min(currentQ.slots.length - 1, cursor + 1);
+        renderSlots(); updateButtons();
+      }
       break;
     case 'Backspace':
       if (!undoBtn.disabled) { e.preventDefault(); undoBtn.click(); }
