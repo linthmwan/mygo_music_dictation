@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>聽寫練習</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --ink: #2b3245;
+    --muted: #7a8299;
+    --accent: #4f6df5;
+    --accent-dark: #3a55d9;
+    --green: #2eb872;
+    --red: #e85d5d;
+    --line: #e3e7f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; justify-content: center; }
+  .tab { padding: 8px 18px; border-radius: 10px; font-size: 14px; }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    width: 100%;
+    max-width: 760px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(40,50,90,.06);
+  }
+  .card h2 {
+    font-size: 14px; margin: 0 0 12px; color: var(--muted);
+    font-weight: 600; letter-spacing: .5px;
+  }
+  .settings-grid {
+    display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center;
+  }
+  .setting { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .chk-grid { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+  .chk-grid .setting { font-size: 13px; gap: 5px; }
+  .group-label { font-size: 13px; color: var(--muted); margin-top: 12px; font-weight: 600; }
+  select, input[type=number] {
+    font-size: 14px; padding: 5px 8px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; color: var(--ink);
+  }
+  input[type=number] { width: 60px; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 14px; }
+  button {
+    font-family: inherit; font-size: 15px;
+    padding: 10px 22px; border-radius: 10px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    cursor: pointer; transition: background .15s, transform .05s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover:not(:disabled) { background: #f0f3fc; }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-dark); }
+
+  .slots { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 64px; margin: 6px 0 14px; }
+  .slot {
+    min-width: 64px; height: 64px; padding: 0 8px; border-radius: 12px;
+    border: 2px dashed var(--line); background: #fafbff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 700;
+  }
+  .slot .sol { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .slot.current { border-color: var(--accent); border-style: solid; background: #eef1ff; }
+  .slot.filled { border-style: solid; border-color: #c9d2f5; }
+  .slot.correct { border-color: var(--green); background: #e9f9f1; color: var(--green); }
+  .slot.wrong { border-color: var(--red); background: #fdeeee; color: var(--red); }
+  .slot.wrong .yours { font-size: 11px; font-weight: 500; color: var(--muted); text-decoration: line-through; }
+  .slot.playing { box-shadow: 0 0 0 3px rgba(79,109,245,.35); }
+
+  .answer-pad { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .note-btn {
+    min-width: 64px; padding: 10px 10px; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-weight: 700; font-size: 15px;
+  }
+  .note-btn small { font-weight: 500; font-size: 11px; color: var(--muted); }
+  .note-btn.sharp { background: #2b3245; color: #fff; border-color: #2b3245; }
+  .note-btn.sharp small { color: #aab2c8; }
+  .note-btn.sharp:hover:not(:disabled) { background: #3d4560; }
+  .note-btn.flash { background: var(--accent) !important; color:#fff !important; border-color: var(--accent) !important; }
+
+  .pad-toggle {
+    display: flex; align-items: center; justify-content: center; gap: 0;
+    font-size: 13px; color: var(--muted); margin-bottom: 12px;
+  }
+  .pad-toggle .seg {
+    font-size: 13px; padding: 6px 16px; border-radius: 0;
+    border: 1px solid var(--line); margin-left: -1px;
+  }
+  .pad-toggle .seg:first-of-type { border-radius: 8px 0 0 8px; margin-left: 8px; }
+  .pad-toggle .seg:last-of-type { border-radius: 0 8px 8px 0; }
+  .pad-toggle .seg.active {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+
+  .answer-pad.piano-mode { display: block; overflow-x: auto; }
+  .piano { --wk: 46px; display: flex; width: max-content; margin: 0 auto; padding-top: 4px; }
+  .wkey-wrap { position: relative; display: inline-block; }
+  button.wkey {
+    width: var(--wk); height: 132px; padding: 0 0 6px;
+    background: #fff; border: 1px solid #c9cfdd; border-radius: 0 0 6px 6px;
+    margin-left: -1px;
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 1px;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+  }
+  button.wkey small { font-size: 10px; font-weight: 500; color: var(--muted); }
+  button.wkey:hover:not(:disabled) { background: #f0f3fc; }
+  button.bkey {
+    position: absolute; top: 0; right: calc(var(--wk) * -0.33); z-index: 2;
+    width: calc(var(--wk) * 0.65); height: 82px; padding: 0 0 4px;
+    background: #2b3245; border: 1px solid #1d2333; border-radius: 0 0 4px 4px;
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+    font-size: 9px; font-weight: 600; color: #aab2c8;
+  }
+  button.bkey:hover:not(:disabled) { background: #3d4560; }
+  button.bkey[data-locked] { opacity: .45; cursor: default; }
+  button.wkey.flash, button.bkey.flash {
+    background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important;
+  }
+
+  .feedback { text-align: center; font-size: 16px; font-weight: 600; min-height: 24px; margin-bottom: 10px; }
+  .feedback.good { color: var(--green); }
+  .feedback.bad { color: var(--red); }
+
+  .stats-row { display: flex; gap: 24px; flex-wrap: wrap; font-size: 14px; }
+  .stat b { font-size: 20px; margin-right: 2px; }
+  table.note-stats { border-collapse: collapse; font-size: 13px; margin-top: 12px; width: 100%; }
+  table.note-stats th, table.note-stats td {
+    border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: center;
+  }
+  table.note-stats th { color: var(--muted); font-weight: 600; }
+  .bar { background: #edf0f9; border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--green); border-radius: 4px; }
+  .small-btn { font-size: 12px; padding: 5px 12px; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toolbar-btns { display: flex; gap: 8px; }
+  .warn {
+    background: #fff7e8; border: 1px solid #f0d9a8; color: #8a6516;
+    border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: 12px;
+  }
+  .weak-title { font-size: 14px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; }
+  .weak-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .weak-item {
+    background: #fdeeee; border: 1px solid #f3c8c8; color: var(--red);
+    border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 600;
+  }
+  .weak-item small { color: var(--muted); font-weight: 500; }
+
+  /* 手機適配 */
+  @media (max-width: 600px) {
+    body { padding: 14px 8px 32px; }
+    .card { padding: 14px 12px; border-radius: 12px; }
+    .tab { padding: 8px 12px; font-size: 13px; }
+    .settings-grid { gap: 10px 18px; }
+    .controls button { flex: 1 1 40%; padding: 12px 8px; }
+    .slot { min-width: 52px; height: 56px; font-size: 15px; }
+    .note-btn { min-width: 52px; flex: 1 1 auto; padding: 12px 6px; }
+    .piano { --wk: 38px; }
+    button.wkey { height: 118px; font-size: 11px; }
+    button.bkey { height: 72px; }
+    .stats-row { gap: 14px; }
+    table.note-stats { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🎧 聽寫練習</h1>
+<div class="subtitle">聽聲音，認出它是什麼</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-mode="single">單音聽寫</button>
+  <button class="tab" data-mode="interval">音程辨認</button>
+  <button class="tab" data-mode="degree">調內音級</button>
+  <button class="tab" data-mode="chord">和弦辨認</button>
+</div>
+
+<div class="card">
+  <h2>題目設定</h2>
+  <div class="settings-grid">
+    <label class="setting" data-modes="single interval chord">最低音
+      <select id="lowSel"></select>
+    </label>
+    <label class="setting" data-modes="single interval chord">最高音
+      <select id="highSel"></select>
+    </label>
+    <label class="setting" data-modes="single degree">每題音數
+      <input type="number" id="countInput" min="1" max="10" value="3">
+    </label>
+    <label class="setting" data-modes="single interval degree chord">速度
+      <select id="speedSel">
+        <option value="1.2">慢</option>
+        <option value="0.85" selected>中</option>
+        <option value="0.55">快</option>
+      </select>
+    </label>
+    <label class="setting" data-modes="single">
+      <input type="checkbox" id="sharpsChk"> 包含黑鍵（升記號）</label>
+    <label class="setting" data-modes="single">
+      <input type="checkbox" id="refChk" checked> 每題先播參考音（最低音）</label>
+    <label class="setting" data-modes="interval">方向
+      <select id="dirSel">
+        <option value="up" selected>上行</option>
+        <option value="down">下行</option>
+        <option value="rand">上下隨機</option>
+        <option value="harm">和聲（同時）</option>
+      </select>
+    </label>
+    <label class="setting" data-modes="degree">調性
+      <select id="keySel"></select>
+    </label>
+    <label class="setting" data-modes="chord">播放方式
+      <select id="chordStyleSel">
+        <option value="block" selected>同時</option>
+        <option value="arp">琶音</option>
+        <option value="rand">兩者隨機</option>
+      </select>
+    </label>
+    <label class="setting" data-modes="single degree">
+      <input type="checkbox" id="btnSoundChk"> 按答案鈕時發聲</label>
+  </div>
+  <div class="group-label" data-modes="interval">要練的音程</div>
+  <div class="chk-grid" id="ivChks" data-modes="interval"></div>
+  <div class="group-label" data-modes="degree">要練的音級</div>
+  <div class="chk-grid" id="degChks" data-modes="degree"></div>
+  <div class="group-label" data-modes="chord">要練的和弦</div>
+  <div class="chk-grid" id="chordChks" data-modes="chord"></div>
+  <div class="hint" id="hintEl"></div>
+</div>
+
+<div class="card">
+  <div class="controls">
+    <button class="primary" id="playBtn">▶ 播放題目</button>
+    <button id="replayBtn" disabled>🔁 重播</button>
+    <button id="undoBtn" disabled>⌫ 刪除一個</button>
+    <button id="nextBtn" disabled>下一題 ➜</button>
+  </div>
+  <div class="feedback" id="feedback"></div>
+  <div class="slots" id="slots"></div>
+  <div class="pad-toggle" data-modes="single" id="padToggle">
+    作答方式
+    <button class="seg active" data-pad="buttons">按鈕</button>
+    <button class="seg" data-pad="piano">鋼琴鍵</button>
+  </div>
+  <div class="answer-pad" id="pad"></div>
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <h2 style="margin:0">本次與累積統計</h2>
+    <div class="toolbar-btns">
+      <button class="small-btn" id="exportBtn">匯出紀錄</button>
+      <button class="small-btn" id="importBtn">匯入紀錄</button>
+      <button class="small-btn" id="resetStatsBtn">清除累積統計</button>
+    </div>
+  </div>
+  <div id="storageWarn" class="warn" style="display:none">
+    ⚠️ 這個瀏覽器無法自動保存練習紀錄（關閉頁面後累積統計會消失）。請定期按「匯出紀錄」備份，下次開啟再「匯入紀錄」。
+  </div>
+  <div class="stats-row" style="margin-top:12px">
+    <div class="stat"><b id="stCorrect">0</b>答對數</div>
+    <div class="stat"><b id="stTotal">0</b>總題數</div>
+    <div class="stat"><b id="stAcc">–</b>正確率</div>
+    <div class="stat"><b id="stStreak">0</b>連續答對</div>
+  </div>
+  <table class="note-stats" id="noteStats" style="display:none">
+    <thead><tr><th id="statHead">音</th><th>次數</th><th>答對</th><th style="width:32%">正確率</th><th>最常聽成</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="weakness"></div>
+</div>
+<input type="file" id="importFile" accept=".json,application/json" style="display:none">
+
+<script>
+"use strict";
+const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const SOLFEGE = {
+  'C':'Do','C#':'Do♯','D':'Re','D#':'Re♯','E':'Mi','F':'Fa','F#':'Fa♯',
+  'G':'Sol','G#':'Sol♯','A':'La','A#':'La♯','B':'Si'
+};
+const isSharp = m => NAMES[m % 12].includes('#');
+const pitchName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const solName = m => SOLFEGE[NAMES[m % 12]];
+const freqOf = m => 440 * Math.pow(2, (m - 69) / 12);
+const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const pickFrom = arr => arr[Math.floor(Math.random() * arr.length)];
+
+const INTERVALS = [
+  { s: 1,  name: '小二度' }, { s: 2,  name: '大二度' },
+  { s: 3,  name: '小三度' }, { s: 4,  name: '大三度' },
+  { s: 5,  name: '完全四度' }, { s: 6,  name: '增四/減五' },
+  { s: 7,  name: '完全五度' }, { s: 8,  name: '小六度' },
+  { s: 9,  name: '大六度' }, { s: 10, name: '小七度' },
+  { s: 11, name: '大七度' }, { s: 12, name: '完全八度' }
+];
+const IV_DEFAULT = ['大二度', '大三度', '完全四度', '完全五度', '完全八度'];
+
+const DEGREES = [
+  { d: 1, off: 0,  sol: 'Do' }, { d: 2, off: 2,  sol: 'Re' },
+  { d: 3, off: 4,  sol: 'Mi' }, { d: 4, off: 5,  sol: 'Fa' },
+  { d: 5, off: 7,  sol: 'Sol' }, { d: 6, off: 9,  sol: 'La' },
+  { d: 7, off: 11, sol: 'Si' }
+];
+const KEYS = [
+  ['C', 0], ['G', 7], ['D', 2], ['A', 9], ['E', 4],
+  ['B', 11], ['F', 5], ['B♭', 10], ['E♭', 3], ['A♭', 8]
+];
+
+const CHORDS = [
+  { short: '大三', name: '大三和弦', sub: 'M',    iv: [0, 4, 7] },
+  { short: '小三', name: '小三和弦', sub: 'm',    iv: [0, 3, 7] },
+  { short: '減三', name: '減三和弦', sub: 'dim',  iv: [0, 3, 6] },
+  { short: '增三', name: '增三和弦', sub: 'aug',  iv: [0, 4, 8] },
+  { short: '屬七', name: '屬七和弦', sub: '7',    iv: [0, 4, 7, 10] },
+  { short: '大七', name: '大七和弦', sub: 'maj7', iv: [0, 4, 7, 11] },
+  { short: '小七', name: '小七和弦', sub: 'm7',   iv: [0, 3, 7, 10] }
+];
+const CHORD_DEFAULT = ['大三', '小三'];
+
+// ---------- 音訊 ----------
+let ctx = null, master = null;
+function ensureAudio() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createGain();
+    master.gain.value = 0.9;
+    master.connect(ctx.destination);
+    // iOS Safari 需要在使用者手勢中播一個無聲 buffer 才會解鎖音訊
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+}
+// 簡易鋼琴音色：基音 + 泛音，指數衰減
+function playTone(midi, when, dur = 0.9, vol = 0.45) {
+  const f = freqOf(midi);
+  const g = ctx.createGain();
+  g.connect(master);
+  const harmonics = [[1, .9], [2, .35], [3, .15], [4, .08], [5, .04]];
+  for (const [h, amp] of harmonics) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f * h;
+    const og = ctx.createGain();
+    og.gain.value = amp;
+    o.connect(og); og.connect(g);
+    o.start(when); o.stop(when + dur + 0.15);
+  }
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(vol, when + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0008, when + dur);
+}
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const lowSel = $('lowSel'), highSel = $('highSel'), countInput = $('countInput'),
+      speedSel = $('speedSel'), sharpsChk = $('sharpsChk'), refChk = $('refChk'),
+      btnSoundChk = $('btnSoundChk'), dirSel = $('dirSel'), keySel = $('keySel'),
+      chordStyleSel = $('chordStyleSel'),
+      playBtn = $('playBtn'), replayBtn = $('replayBtn'), undoBtn = $('undoBtn'),
+      nextBtn = $('nextBtn'), slotsEl = $('slots'), padEl = $('pad'), feedbackEl = $('feedback');
+
+// 最低/最高音選單：C2 ~ C7 的自然音
+(function fillRangeSelects() {
+  for (let m = 36; m <= 96; m++) {
+    if (isSharp(m)) continue;
+    for (const sel of [lowSel, highSel]) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = pitchName(m) + '（' + solName(m) + '）';
+      sel.appendChild(opt.cloneNode(true));
+    }
+  }
+  lowSel.value = 60;   // C4
+  highSel.value = 72;  // C5
+})();
+
+// 調性選單
+(function fillKeySel() {
+  for (const [name] of KEYS) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name + ' 大調';
+    keySel.appendChild(opt);
+  }
+  const r = document.createElement('option');
+  r.value = 'random';
+  r.textContent = '隨機調性';
+  keySel.appendChild(r);
+})();
+
+// 勾選群組
+function buildChkGroup(container, items, getLabel, getId, defaults) {
+  for (const it of items) {
+    const lab = document.createElement('label');
+    lab.className = 'setting';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = getId(it);
+    chk.checked = defaults.includes(getId(it));
+    lab.appendChild(chk);
+    lab.appendChild(document.createTextNode(' ' + getLabel(it)));
+    container.appendChild(lab);
+  }
+}
+buildChkGroup($('ivChks'), INTERVALS, iv => iv.name, iv => iv.name, IV_DEFAULT);
+buildChkGroup($('degChks'), DEGREES, d => d.d + '（' + d.sol + '）', d => String(d.d), ['1','2','3','4','5','6','7']);
+buildChkGroup($('chordChks'), CHORDS, c => c.name, c => c.short, CHORD_DEFAULT);
+const checkedOf = container => [...container.querySelectorAll('input:checked')].map(c => c.value);
+
+// ---------- 狀態 ----------
+let curMode = 'single';
+let padMode = (() => {
+  try { return localStorage.getItem('dictationPadMode') || 'buttons'; }
+  catch { return 'buttons'; }
+})();
+let currentQ = null;     // {seq, slots, pad, info?}
+let answers = [];        // 已選的 pad 選項
+let phase = 'idle';      // idle | playing | answering | checked
+let playToken = 0;
+let session = { correct: 0, total: 0, streak: 0 };
+
+// ---------- 紀錄 ----------
+const storageOk = (() => {
+  try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); return true; }
+  catch { return false; }
+})();
+let store = loadStore();
+
+function emptyBucket() { return { notes: {}, confusions: {} }; }
+function loadStore() {
+  let s = { modes: {} };
+  try {
+    const v = JSON.parse(localStorage.getItem('dictationStore'));
+    if (v && v.modes) s = v;
+    else if (v && v.notes) s = { modes: { single: { notes: v.notes, confusions: v.confusions || {} } } };
+    else {
+      const old = JSON.parse(localStorage.getItem('dictationNoteStats'));
+      if (old) s = { modes: { single: { notes: old, confusions: {} } } };
+    }
+  } catch {}
+  for (const m of ['single', 'interval', 'degree', 'chord'])
+    if (!s.modes[m]) s.modes[m] = emptyBucket();
+  return s;
+}
+function saveStore() {
+  try { localStorage.setItem('dictationStore', JSON.stringify(store)); } catch {}
+}
+function curBucket() { return store.modes[curMode]; }
+function mergeStore(inc) {
+  const incModes = inc.modes ? inc.modes : (inc.notes ? { single: inc } : {});
+  for (const [mode, b] of Object.entries(incModes)) {
+    if (!store.modes[mode]) store.modes[mode] = emptyBucket();
+    const tgt = store.modes[mode];
+    for (const [k, v] of Object.entries(b.notes || {})) {
+      const s = tgt.notes[k] || (tgt.notes[k] = { n: 0, ok: 0 });
+      s.n += v.n || 0; s.ok += v.ok || 0;
+    }
+    for (const [c, m] of Object.entries(b.confusions || {})) {
+      const t = tgt.confusions[c] || (tgt.confusions[c] = {});
+      for (const [a, n] of Object.entries(m)) t[a] = (t[a] || 0) + n;
+    }
+  }
+}
+
+// ---------- 共用工具 ----------
+const gapBase = () => +speedSel.value;
+function rangeNotes(includeSharps) {
+  let lo = +lowSel.value, hi = +highSel.value;
+  if (lo > hi) [lo, hi] = [hi, lo];
+  if (hi - lo > 24) hi = lo + 24; // 答案鈕最多兩個八度
+  const notes = [];
+  for (let m = lo; m <= hi; m++) {
+    if (!includeSharps && isSharp(m)) continue;
+    notes.push(m);
+  }
+  return notes;
+}
+function rangeBounds() {
+  let lo = +lowSel.value, hi = +highSel.value;
+  if (lo > hi) [lo, hi] = [hi, lo];
+  return [lo, hi];
+}
+const clampCount = () => Math.min(10, Math.max(1, +countInput.value || 3));
+
+// ---------- 各模式 ----------
+const MODES = {
+  single: {
+    statHead: '音',
+    hint: '建議初學從 C4–C5、每題 2～3 個音、不含黑鍵開始。設定變更會在「下一題」生效。',
+    statDisplay: k => '<b>' + k + '</b>・' + (SOLFEGE[k.replace(/-?\d+$/, '')] || ''),
+    orderIndex: k => midiOfName(k),
+    build() {
+      const notes = rangeNotes(sharpsChk.checked);
+      if (notes.length < 2) return { error: '範圍太小了，請把最低音和最高音拉開一點' };
+      const n = clampCount();
+      const seq = [], slots = [];
+      if (refChk.checked) seq.push({ midis: [notes[0]], dur: 0.8, gap: gapBase() + 0.45 });
+      let prev = null;
+      for (let i = 0; i < n; i++) {
+        let m;
+        do { m = pickFrom(notes); }
+        while (n > 1 && m === prev && notes.length > 2 && Math.random() < 0.6);
+        prev = m;
+        slots.push({ key: pitchName(m), label: pitchName(m), sub: solName(m) });
+        seq.push({ midis: [m], dur: 0.9, gap: gapBase(), slot: i });
+      }
+      const pad = notes.map(m => ({
+        key: pitchName(m), label: pitchName(m), sub: solName(m),
+        dark: isSharp(m), midi: m
+      }));
+      return { seq, slots, pad };
+    }
+  },
+
+  interval: {
+    statHead: '音程',
+    hint: '播兩個音，答它們的距離。建議先從預設五種音程開始，穩定後再勾更多。',
+    statDisplay: k => '<b>' + k + '</b>',
+    orderIndex: k => INTERVALS.findIndex(iv => iv.name === k),
+    build() {
+      const names = checkedOf($('ivChks'));
+      const opts = INTERVALS.filter(iv => names.includes(iv.name));
+      if (opts.length < 2) return { error: '至少勾選兩種音程才有得猜' };
+      const [lo, hi] = rangeBounds();
+      const iv = pickFrom(opts);
+      if (hi - lo < iv.s) return { error: '音域不夠寬，放不下「' + iv.name + '」，請拉開最低／最高音' };
+      let dir = dirSel.value;
+      if (dir === 'rand') dir = Math.random() < 0.5 ? 'up' : 'down';
+      const seq = [];
+      if (dir === 'harm') {
+        const root = randInt(lo, hi - iv.s);
+        seq.push({ midis: [root, root + iv.s], dur: 1.4, gap: gapBase() + 0.6, slot: 0 });
+      } else if (dir === 'up') {
+        const root = randInt(lo, hi - iv.s);
+        seq.push({ midis: [root], dur: 0.9, gap: gapBase(), slot: 0 });
+        seq.push({ midis: [root + iv.s], dur: 0.9, gap: gapBase() });
+      } else {
+        const root = randInt(lo + iv.s, hi);
+        seq.push({ midis: [root], dur: 0.9, gap: gapBase(), slot: 0 });
+        seq.push({ midis: [root - iv.s], dur: 0.9, gap: gapBase() });
+      }
+      const slots = [{ key: iv.name, label: iv.name, sub: iv.s + ' 半音' }];
+      const pad = opts.map(o => ({ key: o.name, label: o.name, sub: o.s + ' 半音' }));
+      return { seq, slots, pad };
+    }
+  },
+
+  degree: {
+    statHead: '音級',
+    hint: '先聽 I–IV–V–I 和弦進行建立調性，再判斷後面的音是調內第幾級。',
+    statDisplay: k => '<b>' + k + '</b>',
+    orderIndex: k => parseInt(k, 10) || 0,
+    build() {
+      const ids = checkedOf($('degChks'));
+      const opts = DEGREES.filter(d => ids.includes(String(d.d)));
+      if (opts.length < 2) return { error: '至少勾選兩個音級才有得猜' };
+      const [keyName, pc] = keySel.value === 'random' ? pickFrom(KEYS)
+        : KEYS.find(k => k[0] === keySel.value);
+      const tonic = 57 + ((pc + 3) % 12);  // 主音落在 A3~G#4 之間
+      const seq = [];
+      // I–IV–V–I 終止式
+      const cad = [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7, 12]];
+      for (let i = 0; i < cad.length; i++) {
+        seq.push({
+          midis: cad[i].map(o => tonic + o),
+          dur: 0.75,
+          gap: i === cad.length - 1 ? 1.1 : 0.78
+        });
+      }
+      const n = clampCount();
+      const slots = [];
+      let prev = null;
+      for (let i = 0; i < n; i++) {
+        let dg;
+        do { dg = pickFrom(opts); }
+        while (n > 1 && prev && dg.d === prev.d && opts.length > 2 && Math.random() < 0.6);
+        prev = dg;
+        const key = dg.d + '（' + dg.sol + '）';
+        slots.push({ key, label: String(dg.d), sub: dg.sol });
+        seq.push({ midis: [tonic + dg.off], dur: 0.9, gap: gapBase(), slot: i });
+      }
+      const pad = opts.map(d => ({
+        key: d.d + '（' + d.sol + '）', label: String(d.d), sub: d.sol,
+        midi: tonic + d.off
+      }));
+      return { seq, slots, pad, info: keyName + ' 大調' };
+    }
+  },
+
+  chord: {
+    statHead: '和弦',
+    hint: '建議先從大三、小三和弦開始，分辨明亮與柔暗的色彩，再慢慢加入其他和弦。',
+    statDisplay: k => { const c = CHORDS.find(c => c.short === k); return '<b>' + (c ? c.name : k) + '</b>'; },
+    orderIndex: k => CHORDS.findIndex(c => c.short === k),
+    build() {
+      const shorts = checkedOf($('chordChks'));
+      const opts = CHORDS.filter(c => shorts.includes(c.short));
+      if (opts.length < 2) return { error: '至少勾選兩種和弦才有得猜' };
+      const [lo, hi] = rangeBounds();
+      const ch = pickFrom(opts);
+      const span = ch.iv[ch.iv.length - 1];
+      if (hi - lo < span) return { error: '音域不夠寬，放不下「' + ch.name + '」，請拉開最低／最高音' };
+      const root = randInt(lo, hi - span);
+      let style = chordStyleSel.value;
+      if (style === 'rand') style = Math.random() < 0.5 ? 'block' : 'arp';
+      const seq = [];
+      if (style === 'block') {
+        seq.push({ midis: ch.iv.map(o => root + o), dur: 1.5, gap: gapBase() + 0.7, slot: 0 });
+      } else {
+        ch.iv.forEach((o, i) => seq.push({
+          midis: [root + o], dur: 0.7, gap: 0.38, slot: i === 0 ? 0 : undefined
+        }));
+        seq.push({ midis: ch.iv.map(o => root + o), dur: 1.3, gap: gapBase() + 0.5 });
+      }
+      const slots = [{ key: ch.short, label: ch.short, sub: ch.sub }];
+      const pad = opts.map(c => ({ key: c.short, label: c.short, sub: c.sub }));
+      return { seq, slots, pad };
+    }
+  }
+};
+
+// ---------- 出題與播放 ----------
+function newQuestion() {
+  const q = MODES[curMode].build();
+  if (q.error) {
+    feedbackEl.textContent = q.error;
+    feedbackEl.className = 'feedback bad';
+    return false;
+  }
+  currentQ = q;
+  answers = [];
+  phase = 'idle';
+  buildSlots();
+  buildPad();
+  feedbackEl.textContent = '';
+  feedbackEl.className = 'feedback';
+  return true;
+}
+
+function playQuestion() {
+  ensureAudio();
+  const resumePhase = (phase === 'checked') ? 'checked' : 'answering';
+  phase = 'playing';
+  updateButtons();
+  const token = ++playToken;
+  let t = ctx.currentTime + 0.12;
+  const marks = [];
+  for (const ev of currentQ.seq) {
+    for (const m of ev.midis) playTone(m, t, ev.dur);
+    if (ev.slot != null) marks.push({ i: ev.slot, at: (t - ctx.currentTime) * 1000, len: ev.gap * 800 });
+    t += ev.gap;
+  }
+  marks.forEach(({ i, at, len }) => setTimeout(() => {
+    if (token !== playToken) return;
+    const s = slotsEl.children[i];
+    if (s) { s.classList.add('playing'); setTimeout(() => s.classList.remove('playing'), len); }
+  }, at));
+  setTimeout(() => {
+    if (token !== playToken) return;
+    if (phase === 'playing') {
+      phase = resumePhase;
+      updateButtons();
+      if (phase === 'answering') renderSlots();
+    }
+  }, (t - ctx.currentTime) * 1000);
+}
+
+// ---------- 介面 ----------
+function buildSlots() {
+  slotsEl.innerHTML = '';
+  currentQ.slots.forEach(() => {
+    const d = document.createElement('div');
+    d.className = 'slot';
+    slotsEl.appendChild(d);
+  });
+  renderSlots();
+}
+
+function renderSlots() {
+  [...slotsEl.children].forEach((d, i) => {
+    d.classList.remove('current', 'filled');
+    if (i < answers.length) {
+      d.classList.add('filled');
+      d.innerHTML = answers[i].label +
+        (answers[i].sub ? '<span class="sol">' + answers[i].sub + '</span>' : '');
+    } else {
+      d.innerHTML = '<span style="color:#c2c8da">' + (i + 1) + '</span>';
+      if (i === answers.length && phase === 'answering') d.classList.add('current');
+    }
+  });
+}
+
+function buildPad() {
+  padEl.innerHTML = '';
+  const usePiano = (curMode === 'single' && padMode === 'piano');
+  padEl.classList.toggle('piano-mode', usePiano);
+  if (usePiano) buildPianoPad();
+  else buildButtonsPad();
+  updateButtons();
+}
+
+function buildButtonsPad() {
+  currentQ.pad.forEach(opt => {
+    const b = document.createElement('button');
+    b.className = 'note-btn' + (opt.dark ? ' sharp' : '');
+    b.innerHTML = opt.label + (opt.sub ? '<small>' + opt.sub + '</small>' : '');
+    b.addEventListener('click', () => answerOpt(opt, b));
+    padEl.appendChild(b);
+  });
+}
+
+// 鋼琴鍵盤：畫出題目音域內的白鍵與黑鍵；不在作答選項內的黑鍵鎖定變灰
+function buildPianoPad() {
+  const byMidi = new Map(currentQ.pad.map(o => [o.midi, o]));
+  const midis = currentQ.pad.map(o => o.midi);
+  const lo = Math.min(...midis), hi = Math.max(...midis);
+  const piano = document.createElement('div');
+  piano.className = 'piano';
+  for (let m = lo; m <= hi; m++) {
+    if (isSharp(m)) continue;
+    const wrap = document.createElement('span');
+    wrap.className = 'wkey-wrap';
+    const w = document.createElement('button');
+    w.className = 'wkey';
+    w.innerHTML = pitchName(m) + '<small>' + solName(m) + '</small>';
+    const wopt = byMidi.get(m);
+    if (wopt) w.addEventListener('click', () => answerOpt(wopt, w));
+    else w.dataset.locked = '1';
+    wrap.appendChild(w);
+    if (m + 1 <= hi && isSharp(m + 1)) {
+      const b = document.createElement('button');
+      b.className = 'bkey';
+      b.textContent = NAMES[(m + 1) % 12];
+      const bopt = byMidi.get(m + 1);
+      if (bopt) b.addEventListener('click', () => answerOpt(bopt, b));
+      else b.dataset.locked = '1';
+      wrap.appendChild(b);
+    }
+    piano.appendChild(wrap);
+  }
+  padEl.appendChild(piano);
+}
+
+function answerOpt(opt, btn) {
+  if (phase !== 'answering') return;
+  if (btnSoundChk.checked && opt.midi != null) {
+    ensureAudio();
+    playTone(opt.midi, ctx.currentTime, 0.5);
+  }
+  btn.classList.add('flash');
+  setTimeout(() => btn.classList.remove('flash'), 180);
+  answers.push(opt);
+  renderSlots();
+  if (answers.length === currentQ.slots.length) check();
+  updateButtons();
+}
+
+function check() {
+  phase = 'checked';
+  let right = 0;
+  const bucket = curBucket();
+  [...slotsEl.children].forEach((d, i) => {
+    const ok = answers[i].key === currentQ.slots[i].key;
+    d.classList.remove('current');
+    d.classList.add(ok ? 'correct' : 'wrong');
+    if (ok) right++;
+    else d.innerHTML = currentQ.slots[i].label + '<span class="yours">' + answers[i].label + '</span>';
+    const key = currentQ.slots[i].key;
+    const st = bucket.notes[key] || (bucket.notes[key] = { n: 0, ok: 0 });
+    st.n++;
+    if (ok) st.ok++;
+    else {
+      const c = bucket.confusions[key] || (bucket.confusions[key] = {});
+      c[answers[i].key] = (c[answers[i].key] || 0) + 1;
+    }
+  });
+  session.correct += right;
+  session.total += currentQ.slots.length;
+  session.streak = (right === currentQ.slots.length) ? session.streak + 1 : 0;
+  saveStore();
+
+  const keyInfo = currentQ.info ? '（' + currentQ.info + '）' : '';
+  if (right === currentQ.slots.length) {
+    feedbackEl.textContent = '🎉 全對！' + keyInfo;
+    feedbackEl.className = 'feedback good';
+  } else {
+    feedbackEl.textContent = '答對 ' + right + ' / ' + currentQ.slots.length +
+      keyInfo + '，可以按「重播」再聽一次對照';
+    feedbackEl.className = 'feedback bad';
+  }
+  renderStats();
+  updateButtons();
+}
+
+function undo() {
+  if (phase !== 'answering' || !answers.length) return;
+  answers.pop();
+  renderSlots();
+  updateButtons();
+}
+
+function updateButtons() {
+  playBtn.disabled = (phase === 'playing');
+  replayBtn.disabled = (phase === 'idle' || phase === 'playing' || !currentQ);
+  undoBtn.disabled = !(phase === 'answering' && answers.length > 0);
+  nextBtn.disabled = (phase !== 'checked');
+  padEl.querySelectorAll('button').forEach(b =>
+    b.disabled = (phase !== 'answering') || !!b.dataset.locked);
+}
+
+// ---------- 統計 ----------
+function renderStats() {
+  $('stCorrect').textContent = session.correct;
+  $('stTotal').textContent = session.total;
+  $('stAcc').textContent = session.total ? Math.round(session.correct / session.total * 100) + '%' : '–';
+  $('stStreak').textContent = session.streak;
+
+  const mode = MODES[curMode];
+  $('statHead').textContent = mode.statHead;
+  const bucket = curBucket();
+  const keys = Object.keys(bucket.notes);
+  const tbl = $('noteStats');
+  if (!keys.length) { tbl.style.display = 'none'; $('weakness').innerHTML = ''; return; }
+  tbl.style.display = '';
+  keys.sort((a, b) => mode.orderIndex(a) - mode.orderIndex(b));
+  const tb = tbl.querySelector('tbody');
+  tb.innerHTML = '';
+  for (const k of keys) {
+    const s = bucket.notes[k];
+    const pct = Math.round(s.ok / s.n * 100);
+    let worst = '–';
+    const conf = bucket.confusions[k];
+    if (conf) {
+      const top = Object.entries(conf).sort((a, b) => b[1] - a[1])[0];
+      if (top) worst = top[0] + '（' + top[1] + ' 次）';
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + mode.statDisplay(k) + '</td>' +
+      '<td>' + s.n + '</td><td>' + s.ok + '</td>' +
+      '<td><div class="bar"><i style="width:' + pct + '%"></i></div>' + pct + '%</td>' +
+      '<td>' + worst + '</td>';
+    tb.appendChild(tr);
+  }
+  renderWeakness();
+}
+
+function renderWeakness() {
+  const box = $('weakness');
+  const bucket = curBucket();
+  const rows = [];
+  for (const [c, m] of Object.entries(bucket.confusions))
+    for (const [a, n] of Object.entries(m)) rows.push({ c, a, n });
+  if (!rows.length) { box.innerHTML = ''; return; }
+  rows.sort((x, y) => y.n - x.n);
+  box.innerHTML = '<div class="weak-title">弱點分析：最常聽錯的組合</div>' +
+    '<div class="weak-list">' + rows.slice(0, 8).map(r =>
+      '<span class="weak-item">' + r.c + ' → ' + r.a + ' <small>×' + r.n + '</small></span>'
+    ).join('') + '</div>';
+}
+
+function midiOfName(name) {
+  const m = name.match(/^([A-G]#?)(-?\d+)$/);
+  return m ? NAMES.indexOf(m[1]) + (+m[2] + 1) * 12 : 0;
+}
+
+// ---------- 模式切換 ----------
+function switchMode(mode) {
+  curMode = mode;
+  playToken++;             // 讓進行中的播放排程失效
+  currentQ = null;
+  answers = [];
+  phase = 'idle';
+  slotsEl.innerHTML = '';
+  padEl.innerHTML = '';
+  feedbackEl.textContent = '';
+  feedbackEl.className = 'feedback';
+  playBtn.textContent = '▶ 播放題目';
+  [...$('tabs').children].forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('[data-modes]').forEach(el => {
+    el.style.display = el.dataset.modes.split(' ').includes(mode) ? '' : 'none';
+  });
+  $('hintEl').textContent = MODES[mode].hint;
+  renderStats();
+  updateButtons();
+}
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab');
+  if (b && b.dataset.mode !== curMode) switchMode(b.dataset.mode);
+});
+
+// 作答方式切換（按鈕／鋼琴鍵）
+function renderPadToggle() {
+  $('padToggle').querySelectorAll('.seg').forEach(s =>
+    s.classList.toggle('active', s.dataset.pad === padMode));
+}
+$('padToggle').addEventListener('click', e => {
+  const s = e.target.closest('.seg');
+  if (!s || s.dataset.pad === padMode) return;
+  padMode = s.dataset.pad;
+  try { localStorage.setItem('dictationPadMode', padMode); } catch {}
+  renderPadToggle();
+  if (currentQ && curMode === 'single') buildPad(); // 答到一半也能直接換，不影響進度
+});
+renderPadToggle();
+
+// ---------- 事件 ----------
+playBtn.addEventListener('click', () => {
+  ensureAudio();
+  if (!newQuestion()) return;
+  playQuestion();
+  playBtn.textContent = '▶ 重新出題';
+});
+replayBtn.addEventListener('click', () => { ensureAudio(); playQuestion(); });
+undoBtn.addEventListener('click', undo);
+nextBtn.addEventListener('click', () => {
+  if (!newQuestion()) return;
+  playQuestion();
+});
+$('resetStatsBtn').addEventListener('click', () => {
+  if (confirm('確定要清除「所有模式」的累積練習紀錄嗎？')) {
+    store = { modes: {} };
+    for (const m of ['single', 'interval', 'degree', 'chord']) store.modes[m] = emptyBucket();
+    saveStore();
+    try { localStorage.removeItem('dictationNoteStats'); } catch {}
+    renderStats();
+  }
+});
+$('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '聽寫練習紀錄.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$('importBtn').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const inc = JSON.parse(reader.result);
+      if (!inc || typeof inc !== 'object' || (!inc.modes && !inc.notes)) throw new Error('format');
+      mergeStore(inc);
+      saveStore();
+      renderStats();
+      alert('匯入完成，已和現有紀錄合併。');
+    } catch {
+      alert('匯入失敗：檔案格式不正確。');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(f);
+});
+
+if (!storageOk) $('storageWarn').style.display = '';
+switchMode('single');
+</script>
+</body>
+</html>
