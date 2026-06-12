@@ -419,17 +419,26 @@ function loadSoundfont(timbre) {
   sfCache[timbre] = entry;
   const seq = ++sfLoadSeq;
   showSfLoading(timbre);
-  entry.promise = Soundfont.instrument(ctx, name, {
+  const loadP = Soundfont.instrument(ctx, name, {
     soundfont: 'MusyngKite', format: 'mp3', destination: master
-  }).then(player => {
-    entry.player = player; entry.ready = true; entry.loading = false;
+  });
+  // 成敗直接掛在下載本身：就算等待端早已放棄（逾時先播合成），晚到的成功仍會升級音色
+  loadP.then(player => {
+    entry.player = player; entry.ready = true; entry.loading = false; entry.failed = false;
     if (timbreSel && timbreSel.value === timbre) hideSfLoading();
-    return player;
-  }).catch(err => {
+  }).catch(() => {
     entry.loading = false; entry.failed = true;
     if (timbreSel && timbreSel.value === timbre) showSfFailed(timbre);
-    return null;  // 退回純合成
   });
+  // 等待端最多等 8 秒：下載卡死（連不上採樣站）也保證 resolve，播放端永遠不會被堵住
+  entry.promise = Promise.race([
+    loadP,
+    new Promise(r => setTimeout(() => {
+      if (!entry.ready && !entry.failed && timbreSel && timbreSel.value === timbre)
+        showAudioWarn('真實音色下載較慢，先用合成音色播放，完成後會自動切換。');
+      r(null);
+    }, 8000))
+  ]).catch(() => null);
   return entry.promise;
 }
 
@@ -869,18 +878,21 @@ function playQuestion() {
       }
     }, (t - ctx.currentTime) * 1000);
   };
-  // 等音訊真的解鎖（resume 完成）再排程，否則第一次播放會吞掉第一個音
-  // 解鎖後先確保當前音色的真實採樣已載入（載入中／失敗都會 resolve，失敗時 playTone 自動退回合成）
+  // 等音訊真的解鎖（resume 完成）再排程，否則第一次播放會吞掉第一個音。
+  // 但絕不等採樣下載完才出聲：採樣已就緒就用真錄音；還沒好就先用合成播（playTone 逐音自動選擇），
+  // 下載在背景繼續，完成後之後的播放自動升級。最多只等 0.35 秒讓快取命中的採樣趕上。
   const p = ensureAudio();
   const afterAudio = () => {
     if (!ctx) return;
     const tb = timbreSel ? timbreSel.value : 'piano';
     const inst = sfCache[tb];
-    if (inst && inst.ready) { run(); return; }            // 採樣已就緒，直接播
-    const lp = loadSoundfont(tb);
-    if (lp && lp.then) lp.then(run); else run();           // 載完（或退回合成）再播
+    if (inst && inst.ready) { run(); return; }
+    loadSoundfont(tb);                                       // 背景載入，不阻塞播放
+    const lp = (sfCache[tb] && sfCache[tb].promise) || Promise.resolve();
+    const cap = new Promise(r => setTimeout(r, 350));
+    Promise.race([lp, cap]).then(run, run);
   };
-  if (p && p.then) p.then(afterAudio); else afterAudio();
+  if (p && p.then) p.then(afterAudio, afterAudio); else afterAudio();
 }
 
 // ---------- 介面 ----------
