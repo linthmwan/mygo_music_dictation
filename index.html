@@ -445,19 +445,31 @@ function hideSfLoading() { hideAudioWarn(); }
 
 // 三種音色都以 freqOf(midi) 為精確基音，只改泛音結構與包絡，確保聽寫音準不跑掉
 // 若該音色的真實採樣（SoundFont）已載入，優先用真錄音播放；否則退回純合成（保證永遠有聲）
-function playTone(midi, when, dur = 0.9, vol = 0.45) {
+function playTone(midi, when, dur = 0.9, vol = 0.45, gap = 0) {
   const tb = timbreSel ? timbreSel.value : 'piano';
   const inst = sfCache[tb];
-  if (inst && inst.ready) return playSampled(inst.player, midi, when, dur, vol);
+  if (inst && inst.ready) return playSampled(inst.player, tb, midi, when, dur, vol, gap);
   const f = freqOf(midi);
   if (tb === 'violin') return playViolin(f, when, dur, vol);
   if (tb === 'guitar') return playGuitar(f, when, dur, vol);
   return playPiano(f, when, dur, vol);
 }
+// MusyngKite 採樣的錄音電平極低（實測峰值僅滿刻度的 3~6%），且三樂器不一致：
+// piano≈0.032、violin≈0.036、guitar≈0.064。各自乘上對應係數正規化，讓三者響度一致
+// 並對齊合成版的聽感（合成版基音峰值約 0.4）。
+const SF_GAIN = { piano: 13, violin: 12, guitar: 7 };
 // 用真實樂器採樣播放：soundfont-player 內部按 MIDI 音高選對應錄音，音準等同錄音本身
-function playSampled(player, midi, when, dur, vol) {
+function playSampled(player, timbre, midi, when, dur, vol, gap) {
   // MusyngKite 是逐半音採樣，midi→音名直接對應，不需 pitch-shift
-  player.play(midi, when, { duration: dur + 0.3, gain: vol * 2.2 });
+  const g = (SF_GAIN[timbre] || 10) * vol;
+  // duration 是「多久後觸發 release」。採樣每段長 3.13s，若不主動收音、下一個音來時
+  // 上一個還在響（小提琴是持續音尤其明顯），聽寫會糊掉。
+  // 收音時間取「音長」與「間隔的 85%」較小者，確保下一個音響起前已切斷，且留一點呼吸感。
+  const rel = gap > 0 ? Math.min(dur, gap * 0.85) : dur;
+  const node = player.play(midi, when, { duration: rel, gain: g });
+  // 保險：node.stop(when+rel) 觸發內建 release 淡出（無 click），即使 duration 行為有差也強制收音
+  if (node && node.stop) { try { node.stop(when + rel); } catch (e) {} }
+  return node;
 }
 // 鋼琴：基音 + 泛音，快速 attack、指數衰減
 function playPiano(f, when, dur, vol) {
@@ -839,7 +851,7 @@ function playQuestion() {
     let t = ctx.currentTime + 0.12;
     const marks = [];
     for (const ev of currentQ.seq) {
-      for (const m of ev.midis) playTone(m, t, ev.dur);
+      for (const m of ev.midis) playTone(m, t, ev.dur, 0.45, ev.gap);
       if (ev.slot != null) marks.push({ i: ev.slot, at: (t - ctx.currentTime) * 1000, len: ev.gap * 800 });
       t += ev.gap;
     }
