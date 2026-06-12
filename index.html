@@ -262,7 +262,6 @@
     <button id="replayBtn" disabled>🔁 重播</button>
     <button id="undoBtn" disabled>⌫ 刪除一個</button>
     <button id="submitBtn" disabled>✓ 送出答案</button>
-    <button id="nextBtn" disabled>下一題 ➜</button>
   </div>
   <div id="audioWarn" class="warn" style="display:none"></div>
   <div class="feedback" id="feedback"></div>
@@ -417,7 +416,7 @@ const lowSel = $('lowSel'), highSel = $('highSel'), countInput = $('countInput')
       btnSoundChk = $('btnSoundChk'), dirSel = $('dirSel'), keySel = $('keySel'),
       chordStyleSel = $('chordStyleSel'),
       playBtn = $('playBtn'), replayBtn = $('replayBtn'), undoBtn = $('undoBtn'),
-      submitBtn = $('submitBtn'), nextBtn = $('nextBtn'),
+      submitBtn = $('submitBtn'),
       slotsEl = $('slots'), padEl = $('pad'), feedbackEl = $('feedback');
 
 // 最低/最高音選單：C2 ~ C7 的自然音
@@ -899,7 +898,6 @@ function updateButtons() {
   replayBtn.disabled = (phase === 'idle' || phase === 'playing' || !currentQ);
   undoBtn.disabled = !(phase === 'answering' && answers.length > 0);
   submitBtn.disabled = !(phase === 'answering' && currentQ && answers.length === currentQ.slots.length);
-  nextBtn.disabled = (phase !== 'checked');
   // 作答中可按；對完答案後保持可按（試聽模式）
   padEl.querySelectorAll('button').forEach(b =>
     b.disabled = !(phase === 'answering' || phase === 'checked') || !!b.dataset.locked);
@@ -1012,9 +1010,26 @@ undoBtn.addEventListener('click', undo);
 submitBtn.addEventListener('click', () => {
   if (phase === 'answering' && currentQ && answers.length === currentQ.slots.length) check();
 });
-nextBtn.addEventListener('click', () => {
-  if (!newQuestion()) return;
-  playQuestion();
+
+// ---------- 鍵盤快捷鍵：R 重播、Backspace 刪除、Enter 送出 ----------
+document.addEventListener('keydown', e => {
+  // 焦點在輸入框／下拉選單時不攔截，避免影響打字與選擇
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;  // 放行系統快捷鍵
+  switch (e.key) {
+    case 'r': case 'R':
+      if (!replayBtn.disabled) { e.preventDefault(); replayBtn.click(); }
+      break;
+    case 'Backspace':
+      if (!undoBtn.disabled) { e.preventDefault(); undoBtn.click(); }
+      break;
+    case 'Enter':
+      // 作答完成可送出；已對完答案則出下一題（等同「重新出題」）
+      if (!submitBtn.disabled) { e.preventDefault(); submitBtn.click(); }
+      else if (phase === 'checked' && !playBtn.disabled) { e.preventDefault(); playBtn.click(); }
+      break;
+  }
 });
 $('resetStatsBtn').addEventListener('click', () => {
   if (confirm('確定要清除「所有模式」的累積練習紀錄嗎？')) {
