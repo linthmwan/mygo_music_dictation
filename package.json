@@ -1,0 +1,12 @@
+{
+  "name": "mygo-music-dictation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "聽寫練習（音感訓練）煙霧測試",
+  "scripts": {
+    "test": "node tests/run-smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1"
+  }
+}
