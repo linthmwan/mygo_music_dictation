@@ -190,46 +190,6 @@
     .stats-row { gap: 14px; }
     table.note-stats { font-size: 12px; }
   }
-  /* 診斷面板：手機開不了 devtools，所以把 log 直接畫在畫面上，能截圖、能複製 */
-  #diagBar { margin: 10px 0 4px; }
-  .diag-toggle {
-    font-size: 12px; padding: 5px 10px; border-radius: 8px;
-    background: #2a2f3a; color: #aeb6c4; border: 1px solid #3a4150;
-    cursor: pointer; opacity: .7;
-  }
-  .diag-toggle:hover { opacity: 1; }
-  .diag-panel {
-    margin-top: 8px; border: 1px solid #3a4150; border-radius: 10px;
-    background: #14171d; overflow: hidden;
-  }
-  .diag-head {
-    display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    padding: 8px 10px; font-size: 12px; color: #9aa3b2;
-    background: #1b1f27; border-bottom: 1px solid #2a2f3a; flex-wrap: wrap;
-  }
-  .diag-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .diag-actions button {
-    font-size: 12px; padding: 4px 8px; border-radius: 7px;
-    background: #2a2f3a; color: #cdd3dd; border: 1px solid #3a4150; cursor: pointer;
-  }
-  .diag-actions button:hover { background: #333a47; }
-  .diag-test {
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    padding: 8px 10px; font-size: 12px; color: #9aa3b2;
-    background: #181c23; border-bottom: 1px solid #2a2f3a;
-  }
-  .diag-test button {
-    font-size: 13px; padding: 6px 12px; border-radius: 8px;
-    background: #2f3a4d; color: #dbe3f0; border: 1px solid #45506680; cursor: pointer;
-  }
-  .diag-test button:active { background: #3a4862; }
-  .diag-log {
-    margin: 0; padding: 10px; max-height: 280px; overflow: auto;
-    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
-    line-height: 1.5; color: #c8cedb; white-space: pre-wrap; word-break: break-word;
-  }
-  .diag-log .bad { color: #ff8a8a; }
-  .diag-log .good { color: #8ce0a0; }
 </style>
 </head>
 <body>
@@ -327,26 +287,6 @@
     <button id="submitBtn" disabled>✓ 送出答案</button>
   </div>
   <div id="audioWarn" class="warn" style="display:none"></div>
-  <div id="diagBar">
-    <button type="button" id="diagToggle" class="diag-toggle">🔍 診斷</button>
-    <div id="diagPanel" class="diag-panel" style="display:none">
-      <div class="diag-head">
-        <span>音訊診斷紀錄（無聲時把這個複製給開發者）</span>
-        <span class="diag-actions">
-          <button type="button" id="diagCopy">📋 複製</button>
-          <button type="button" id="diagDownload">⬇ 下載</button>
-          <button type="button" id="diagClear">🗑 清空</button>
-          <button type="button" id="diagClose">✕</button>
-        </span>
-      </div>
-      <div class="diag-test">
-        <span>🧪 無聲時依序點這兩顆，聽哪一顆「有聲」：</span>
-        <button type="button" id="diagBeepHtml5">🔊 HTML5 嗶聲</button>
-        <button type="button" id="diagBeepWebAudio">🎵 WebAudio 嗶聲</button>
-      </div>
-      <pre id="diagLog" class="diag-log"></pre>
-    </div>
-  </div>
   <div class="feedback" id="feedback"></div>
   <div class="slots" id="slots"></div>
   <div class="pad-toggle" data-modes="single" id="padToggle">
@@ -444,97 +384,26 @@ function chordVoicing(iv, k) {
   return iv.length === 3 ? [...v, 12] : v;
 }
 
-// ---------- 音訊診斷紀錄 ----------
-// 目的：追查「掛機久了／切頁面回來無聲，連 refresh 都救不回、只能關分頁重開」的根因。
-// 關鍵設計：log 必須撐過 refresh，所以寫進 localStorage 環形緩衝（refresh 不清、關分頁也還在），
-// 才能看到「壞掉前 → refresh → 重開後新 ctx 又起不來」這整串跨 refresh 的證據。
-const ALOG_KEY = 'dictationAudioLog';
-const ALOG_MAX = 200;          // 最多保留筆數（環形，寫滿丟最舊）
-const ALOG_CAP = 50000;        // 字元數硬上限，避免 localStorage 爆掉
-// 每次開頁面（含 refresh）給一個隨機 4 碼 load id，事後讀 log 能清楚分辨 refresh 界線
-const ALOAD_ID = Math.random().toString(36).slice(2, 6);
-let ctxCount = 0;              // 本 load 建了第幾個 AudioContext（驗證「context 堆積」假設）
-function alog(evt, detail) {
-  const line = {
-    t: new Date().toISOString().slice(11, 23),  // HH:MM:SS.mmm
-    load: ALOAD_ID,
-    evt: evt,
-    state: ctx ? ctx.state : '-',
-    ctxN: ctxCount,
-    d: detail == null ? '' : detail
-  };
-  try {
-    let arr = [];
-    try { arr = JSON.parse(localStorage.getItem(ALOG_KEY)) || []; } catch {}
-    arr.push(line);
-    while (arr.length > ALOG_MAX) arr.shift();
-    let s = JSON.stringify(arr);
-    while (s.length > ALOG_CAP && arr.length > 1) { arr.shift(); s = JSON.stringify(arr); }
-    localStorage.setItem(ALOG_KEY, s);
-  } catch {}
-  try { console.log('[audio]', line.t, evt, 'state=' + line.state, detail != null ? detail : ''); } catch {}
-  renderDiag();  // 面板開著就即時刷新
-}
-
 // ---------- 音訊 ----------
 let ctx = null, master = null, audioWarned = false;
-// 把 statechange 監聽掛上去（瀏覽器在背後偷偷 suspend/interrupt 時這裡會響）
-function attachCtxListeners() {
-  if (!ctx || ctx.__listenersAttached) return;
-  ctx.__listenersAttached = true;
-  try { ctx.onstatechange = () => alog('statechange', ctx.state); } catch {}
-}
-function buildCtx() {
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) { showAudioWarn('這個瀏覽器不支援 Web Audio，請改用 Safari 或 Chrome 開啟。'); alog('no-webaudio'); return false; }
-  ctx = new AC();
-  ctxCount++;
-  master = ctx.createGain();
-  master.gain.value = 0.9;
-  master.connect(ctx.destination);
-  attachCtxListeners();
-  alog('ctx-create', 'count=' + ctxCount + ' initState=' + ctx.state);
-  // iOS Safari 需要在使用者手勢中播一個無聲 buffer 才會解鎖音訊
-  const buf = ctx.createBuffer(1, 1, 22050);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start(0);
-  return true;
-}
 function ensureAudio() {
-  // ctx 不存在、或已被瀏覽器收成 closed → 重建（closed 後舊 ctx 永遠救不回，必須換新的）
-  if (!ctx || ctx.state === 'closed') {
-    if (ctx && ctx.state === 'closed') { alog('ctx-was-closed', '重建'); sfInvalidateAll(); }
-    if (!buildCtx()) return Promise.resolve();
+  if (!ctx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { showAudioWarn('這個瀏覽器不支援 Web Audio，請改用 Safari 或 Chrome 開啟。'); return; }
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = 0.9;
+    master.connect(ctx.destination);
+    // iOS Safari 需要在使用者手勢中播一個無聲 buffer 才會解鎖音訊
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
   }
-  // resume 守衛放寬：只要不是 running 就試著救（含 iOS 的非標準 'interrupted' 狀態）
-  let p;
-  if (ctx.state !== 'running') {
-    alog('resume-call', 'from=' + ctx.state);
-    const t0 = performance.now();
-    const resumeP = (() => { try { return ctx.resume(); } catch (e) { alog('resume-throw', String(e)); return Promise.reject(e); } })();
-    // 逾時保險：resume() 若 4 秒內沒 resolve（audio service 卡死的典型表現），記一筆，不無限等
-    const timeout = new Promise(r => setTimeout(() => r('__timeout__'), 4000));
-    p = Promise.race([resumeP.then(() => 'ok'), timeout]).then(res => {
-      const ms = Math.round(performance.now() - t0);
-      if (res === '__timeout__') alog('resume-timeout', ms + 'ms 仍未 resolve, state=' + ctx.state);
-      else alog('resume-done', ms + 'ms, state=' + ctx.state);
-    }).catch(e => alog('resume-reject', String(e)));
-  } else {
-    p = Promise.resolve();
-  }
-  return p.then(checkClock).then(checkAudioHealth).catch(checkAudioHealth);
-}
-// 量 ctx.currentTime 是否在前進：state 寫 running 但時鐘凍住，代表音訊執行緒其實卡死。
-// （刻意不用 AnalyserNode —— 之前實測它在本設定會回假的 0，會誤導判斷。）
-function checkClock() {
-  if (!ctx || ctx.state !== 'running') return;
-  const a = ctx.currentTime;
-  return new Promise(r => setTimeout(r, 120)).then(() => {
-    const b = ctx.currentTime;
-    if (b - a < 0.02) alog('clock-stuck', 'currentTime 120ms 內只走了 ' + (b - a).toFixed(4) + 's（疑似音訊執行緒卡死）');
-  });
+  // resume() 是非同步的，回傳 promise 讓呼叫端可以等它真的解鎖再排程，避免吞掉第一個音
+  const p = (ctx.state === 'suspended') ? ctx.resume() : Promise.resolve();
+  return p.then(checkAudioHealth).catch(checkAudioHealth);
 }
 
 // 偵測常見的「沒聲音」情境並提示；解鎖成功就把提示收掉
@@ -550,14 +419,7 @@ function showAudioWarn(msg) {
 }
 function hideAudioWarn() { const el = $('audioWarn'); if (el) el.style.display = 'none'; }
 function checkAudioHealth() {
-  if (ctx && ctx.state === 'running') { hideAudioWarn(); audioWarned = false; return; }
-  alog('health-bad', 'state=' + (ctx ? ctx.state : 'null') + ' ctxCount=' + ctxCount);
-  // ctx 已 closed，或這個 load 建過多個 ctx 還是起不來 → 就是「refresh 也救不回」的處境，
-  // 純前端無法重啟瀏覽器的音訊服務，明確告知唯一有效解法，不讓使用者對著靜默頁面亂按。
-  if ((ctx && ctx.state === 'closed') || ctxCount >= 2) {
-    showAudioWarn('音訊服務似乎當掉了（這不是靜音問題）。請「完全關閉這個分頁／App」再重新開啟本頁——重新整理通常救不回來。若方便，請點下方「🔍 診斷」把紀錄複製給開發者。');
-    return;
-  }
+  if (ctx && ctx.state === 'running') { hideAudioWarn(); return; }
   if (audioWarned) return;
   audioWarned = true;
   if (isInAppBrowser())
@@ -576,11 +438,6 @@ const SF_NAMES = {
 };
 const sfCache = {};   // { timbre: { ready:bool, loading:bool, failed:bool, player } }
 let sfLoadSeq = 0;
-// ctx 被重建時呼叫：舊的採樣 player 綁在死掉的 ctx 上，必須整批作廢，下次播放會對新 ctx 重新載入
-function sfInvalidateAll() {
-  for (const k of Object.keys(sfCache)) delete sfCache[k];
-  alog('sf-invalidate', '採樣快取已清空，將對新 ctx 重載');
-}
 
 function loadSoundfont(timbre) {
   const name = SF_NAMES[timbre];
@@ -1536,139 +1393,6 @@ timbreSel.addEventListener('change', () => {
 });
 
 if (!storageOk) $('storageWarn').style.display = '';
-
-// ---------- 診斷面板的呈現與操作 ----------
-function diagReadRaw() {
-  try { return JSON.parse(localStorage.getItem(ALOG_KEY)) || []; } catch { return []; }
-}
-function diagFormat() {
-  const arr = diagReadRaw();
-  const head = '# 音訊診斷紀錄  本次load=' + ALOAD_ID +
-    '  ' + (navigator.userAgent || '') + '\n' +
-    '# 格式: 時間 [load] 事件 state=狀態 ctxN=第幾個ctx 詳情\n';
-  const body = arr.map(l =>
-    l.t + ' [' + l.load + '] ' + l.evt + ' state=' + l.state + ' ctxN=' + l.ctxN +
-    (l.d ? '  ' + l.d : '')
-  ).join('\n');
-  return head + (body || '（目前沒有任何紀錄）');
-}
-function renderDiag() {
-  const el = document.getElementById('diagLog');
-  if (!el || document.getElementById('diagPanel').style.display === 'none') return;
-  const arr = diagReadRaw();
-  el.innerHTML = arr.map(l => {
-    const bad = /bad|stuck|timeout|closed|reject|throw|no-webaudio/.test(l.evt);
-    const good = l.evt === 'resume-done' || l.state === 'running';
-    const cls = bad ? ' class="bad"' : (good ? ' class="good"' : '');
-    const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-    return '<span' + cls + '>' + esc(l.t + ' [' + l.load + '] ' + l.evt +
-      ' state=' + l.state + ' n' + l.ctxN + (l.d ? '  ' + l.d : '')) + '</span>';
-  }).join('\n') || '（目前沒有任何紀錄）';
-  el.scrollTop = el.scrollHeight;
-}
-document.getElementById('diagToggle').addEventListener('click', () => {
-  const p = document.getElementById('diagPanel');
-  const show = p.style.display === 'none';
-  p.style.display = show ? '' : 'none';
-  if (show) renderDiag();
-});
-document.getElementById('diagClose').addEventListener('click', () => {
-  document.getElementById('diagPanel').style.display = 'none';
-});
-document.getElementById('diagCopy').addEventListener('click', async () => {
-  const text = diagFormat();
-  try {
-    await navigator.clipboard.writeText(text);
-    alert('已複製診斷紀錄，貼給開發者即可。');
-  } catch {
-    // 舊瀏覽器 / 非安全環境的後備：用 textarea + execCommand
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    let ok = false; try { ok = document.execCommand('copy'); } catch {}
-    document.body.removeChild(ta);
-    alert(ok ? '已複製診斷紀錄，貼給開發者即可。' : '複製失敗，請改用「下載」。');
-  }
-});
-document.getElementById('diagDownload').addEventListener('click', () => {
-  const blob = new Blob([diagFormat()], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'audio-diag-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '') + '.txt';
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-});
-document.getElementById('diagClear').addEventListener('click', () => {
-  try { localStorage.removeItem(ALOG_KEY); } catch {}
-  renderDiag();
-});
-
-// ---------- 受控測試音：把「無聲」切到精確的層級 ----------
-// 兩條路徑刻意獨立，對照哪一顆有聲就能斷案：
-//   HTML5 <audio>：完全不碰 AudioContext，走的是另一條輸出管線
-//   WebAudio：用現有的 ctx，但繞過 master/playTone/採樣，直連 destination，最純粹的 Web Audio 輸出測試
-// 內嵌一段約 0.25 秒 440Hz 的 WAV（data URI，不依賴網路、離線也能播）
-const BEEP_WAV = (() => {
-  const sr = 8000, len = Math.floor(sr * 0.25), bytes = 44 + len * 2;
-  const b = new Uint8Array(bytes), dv = new DataView(b.buffer);
-  const wr = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
-  wr(0, 'RIFF'); dv.setUint32(4, bytes - 8, true); wr(8, 'WAVE'); wr(12, 'fmt ');
-  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-  dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true);
-  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
-  wr(36, 'data'); dv.setUint32(40, len * 2, true);
-  for (let i = 0; i < len; i++) {
-    const env = Math.min(1, i / 200, (len - i) / 200);   // 頭尾淡入淡出，避免爆音
-    dv.setInt16(44 + i * 2, Math.sin(2 * Math.PI * 440 * i / sr) * 22000 * env, true);
-  }
-  let bin = ''; for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
-  return 'data:audio/wav;base64,' + btoa(bin);
-})();
-document.getElementById('diagBeepHtml5').addEventListener('click', () => {
-  alog('test-html5', '嘗試播放 HTML5 <audio> 嗶聲');
-  try {
-    const a = new Audio(BEEP_WAV);
-    a.onplaying = () => alog('test-html5-playing', '✅ HTML5 已開始播放（這條管線活著）');
-    a.onerror = () => alog('test-html5-error', '❌ HTML5 播放失敗 err=' + (a.error && a.error.code));
-    const pr = a.play();
-    if (pr && pr.then) pr.then(() => alog('test-html5-resolved', 'play() resolved'),
-                               e => alog('test-html5-reject', '❌ play() 被拒：' + String(e)));
-  } catch (e) { alog('test-html5-throw', String(e)); }
-});
-document.getElementById('diagBeepWebAudio').addEventListener('click', () => {
-  const p = ensureAudio();   // 確保 ctx 起來（會自己記 ctx-create/resume 等）
-  const fire = () => {
-    if (!ctx) { alog('test-webaudio', '❌ 無 ctx'); return; }
-    alog('test-webaudio', '嘗試直連 destination 發聲 state=' + ctx.state + ' time=' + ctx.currentTime.toFixed(2));
-    try {
-      const osc = ctx.createOscillator(), g = ctx.createGain();
-      osc.frequency.value = 440;
-      g.gain.value = 0.0001;
-      g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
-      osc.connect(g); g.connect(ctx.destination);   // 刻意繞過 master / playTone / 採樣
-      osc.start(); osc.stop(ctx.currentTime + 0.26);
-      const t0 = ctx.currentTime;
-      osc.onended = () => alog('test-webaudio-ended', 'osc 已結束，currentTime 前進 ' + (ctx.currentTime - t0).toFixed(3) + 's');
-    } catch (e) { alog('test-webaudio-throw', String(e)); }
-  };
-  if (p && p.then) p.then(fire, fire); else fire();
-});
-
-// ---------- 頁面生命週期監聽（追「切走再回來就沒聲」的關鍵時刻）----------
-document.addEventListener('visibilitychange', () => {
-  alog('visibility', document.visibilityState + (ctx ? ' ctxState=' + ctx.state : ' noctx'));
-  // 回到前景時，若 ctx 已被背景偷偷停掉，記下來——這正是無聲的常見起點
-  if (document.visibilityState === 'visible' && ctx && ctx.state !== 'running' && ctx.state !== 'closed')
-    alog('fg-not-running', '回前景時 ctx=' + ctx.state + '（音可能已斷，下次播放會嘗試 resume）');
-});
-window.addEventListener('pagehide', e => alog('pagehide', 'persisted=' + e.persisted));
-window.addEventListener('pageshow', e => alog('pageshow', 'persisted=' + e.persisted + (ctx ? ' ctxState=' + ctx.state : ' noctx')));
-// iOS Safari 背景凍結/解凍（非標準，有支援才會響）
-document.addEventListener('freeze', () => alog('freeze', ctx ? ctx.state : 'noctx'));
-document.addEventListener('resume', () => alog('page-resume', ctx ? ctx.state : 'noctx'));
-
-alog('page-load', 'UA=' + (navigator.userAgent || '').slice(0, 80));
 switchMode('single');
 </script>
 </body>
