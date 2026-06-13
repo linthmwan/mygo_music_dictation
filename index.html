@@ -218,6 +218,9 @@
     <label class="setting" data-modes="single">每題音數
       <input type="number" id="countInput" min="1" max="10" value="3">
     </label>
+    <label class="setting" data-modes="single interval scale chord">A4 基準頻率 (Hz)
+      <input type="number" id="a4Input" min="415" max="466" step="1" value="440">
+    </label>
     <label class="setting" data-modes="single interval scale chord">速度
       <select id="speedSel">
         <option value="1.2">慢</option>
@@ -335,7 +338,11 @@ const SOLFEGE = {
 const isSharp = m => NAMES[m % 12].includes('#');
 const pitchName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 const solName = m => SOLFEGE[NAMES[m % 12]];
-const freqOf = m => 440 * Math.pow(2, (m - 69) / 12);
+let a4Hz = (() => {
+  try { const v = parseFloat(localStorage.getItem('dictationA4')); return (v >= 415 && v <= 466) ? v : 440; }
+  catch { return 440; }
+})();
+const freqOf = m => a4Hz * Math.pow(2, (m - 69) / 12);
 const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pickFrom = arr => arr[Math.floor(Math.random() * arr.length)];
 
@@ -579,6 +586,7 @@ function playGuitar(f, when, dur, vol) {
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
 const lowSel = $('lowSel'), highSel = $('highSel'), countInput = $('countInput'),
+      a4Input = $('a4Input'),
       speedSel = $('speedSel'), timbreSel = $('timbreSel'), sharpsChk = $('sharpsChk'), refChk = $('refChk'),
       btnSoundChk = $('btnSoundChk'), dirSel = $('dirSel'), scaleDirSel = $('scaleDirSel'),
       chordStyleSel = $('chordStyleSel'), invChk = $('invChk'),
@@ -1347,6 +1355,17 @@ $('padToggle').addEventListener('click', e => {
   if (currentQ && curMode === 'single') buildPad(); // 答到一半也能直接換，不影響進度
 });
 renderPadToggle();
+
+// A4 基準頻率：載入時同步輸入框，變更時夾在範圍內並保存
+a4Input.value = a4Hz;
+const applyA4 = () => {
+  let v = Math.round(parseFloat(a4Input.value));
+  if (!(v >= 415 && v <= 466)) v = 440;
+  a4Hz = v;
+  a4Input.value = v;
+  try { localStorage.setItem('dictationA4', String(v)); } catch {}
+};
+a4Input.addEventListener('change', applyA4);
 
 // ---------- 事件 ----------
 playBtn.addEventListener('click', () => {
