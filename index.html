@@ -141,7 +141,7 @@
     width: calc(var(--wk) * 0.65); height: 82px; padding: 0 0 4px;
     background: #2b3245; border: 1px solid #1d2333; border-radius: 0 0 4px 4px;
     display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-    font-size: 9px; font-weight: 600; color: #aab2c8;
+    font-size: 9px; font-weight: 600; color: #aab2c8; line-height: 1.2;
   }
   button.bkey:hover:not(:disabled) { background: #3d4560; }
   button.bkey[data-locked] { opacity: .45; cursor: default; }
@@ -248,7 +248,7 @@
       </select>
     </label>
     <label class="setting" data-modes="single">
-      <input type="checkbox" id="sharpsChk"> 包含黑鍵（升記號）</label>
+      <input type="checkbox" id="sharpsChk"> 包含黑鍵（升／降）</label>
     <label class="setting" data-modes="single">
       <input type="checkbox" id="refChk" checked> 每題先播參考音（最低音）</label>
     <label class="setting" data-modes="interval">方向
@@ -350,6 +350,17 @@ const SOLFEGE = {
 const isSharp = m => NAMES[m % 12].includes('#');
 const pitchName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 const solName = m => SOLFEGE[NAMES[m % 12]];
+
+// 顯示用：黑鍵同時標升／降記號（如 C♯/D♭）。內部記分／統計的 key 仍一律用上面
+// 的 NAMES（升記號、ASCII '#'），確保 C♯ 與 D♭ 算同一個音、統計不被拆開。
+const SHARP_PC = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const FLAT_PC  = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+const SHARP_SOL = ['Do', 'Do♯', 'Re', 'Re♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'La♯', 'Si'];
+const FLAT_SOL  = ['Do', 'Re♭', 'Re', 'Mi♭', 'Mi', 'Fa', 'Sol♭', 'Sol', 'La♭', 'La', 'Si♭', 'Si'];
+const pc12 = m => (((m % 12) + 12) % 12);
+const pcLabel = pc => isSharp(pc) ? SHARP_PC[pc] + '/' + FLAT_PC[pc] : SHARP_PC[pc];
+const noteLabel = m => pcLabel(pc12(m)) + (Math.floor(m / 12) - 1);
+const solLabel = m => { const pc = pc12(m); return isSharp(pc) ? SHARP_SOL[pc] + '/' + FLAT_SOL[pc] : SHARP_SOL[pc]; };
 let a4Hz = (() => {
   try { const v = parseFloat(localStorage.getItem('dictationA4')); return (v >= 415 && v <= 466) ? v : 440; }
   catch { return 440; }
@@ -744,11 +755,11 @@ const MODES = {
         do { m = pickFrom(notes); }
         while (n > 1 && m === prev && notes.length > 2 && Math.random() < 0.6);
         prev = m;
-        slots.push({ key: pitchName(m), label: pitchName(m), sub: solName(m) });
+        slots.push({ key: pitchName(m), label: noteLabel(m), sub: solLabel(m) });
         seq.push({ midis: [m], dur: 0.9, gap: gapBase(), slot: i });
       }
       const pad = notes.map(m => ({
-        key: pitchName(m), label: pitchName(m), sub: solName(m),
+        key: pitchName(m), label: noteLabel(m), sub: solLabel(m),
         dark: isSharp(m), midi: m
       }));
       return { seq, slots, pad, preview: opt => playTone(opt.midi, ctx.currentTime, 0.6) };
@@ -924,10 +935,10 @@ const MODES = {
       const seq = [];
       if (chordRefChk.checked) seq.push({ midis: [60], dur: 0.8, gap: gapBase() + 0.5 });
       this.pushChordSeq(seq, rel.map(o => rootMidi + o), style);
-      const name = NAMES[rootPc] + ch.sym;
-      const slots = [{ key: name, label: name, sub: ch.short }];
+      const slots = [{ key: NAMES[rootPc] + ch.sym, label: pcLabel(rootPc) + ch.sym, sub: ch.short }];
       const twoStage = {
-        roots: pcs.map(pc => ({ pc, label: NAMES[pc] })),
+        // keyName = 記分用（升記號）；label = 顯示用（黑鍵同時標升／降）
+        roots: pcs.map(pc => ({ pc, label: pcLabel(pc), keyName: NAMES[pc] })),
         quals: opts.map(c => ({ sym: c.sym, short: c.short }))
       };
       const info = invChk.checked ? INV_NAMES[inv] : null;
@@ -1077,7 +1088,7 @@ function buildTwoStagePad() {
   if (pendingRoot == null) {
     ts.roots.forEach(r => {
       const b = document.createElement('button');
-      b.className = 'note-btn' + (r.label.includes('#') ? ' sharp' : '');
+      b.className = 'note-btn' + (isSharp(r.pc) ? ' sharp' : '');
       b.innerHTML = r.label + '<small>根音</small>';
       b.addEventListener('click', () => {
         if (phase === 'checked') {
@@ -1096,13 +1107,14 @@ function buildTwoStagePad() {
     });
   } else {
     ts.quals.forEach(q => {
-      const name = pendingRoot.label + q.sym;
+      const label = pendingRoot.label + q.sym;       // 顯示（黑鍵含升／降）
+      const key = pendingRoot.keyName + q.sym;        // 記分（升記號）
       const b = document.createElement('button');
       b.className = 'note-btn';
-      b.innerHTML = name + '<small>' + q.short + '</small>';
+      b.innerHTML = label + '<small>' + q.short + '</small>';
       b.addEventListener('click', () => {
         if (phase !== 'answering') return;
-        answers[cursor] = { key: name, label: name, sub: q.short };
+        answers[cursor] = { key: key, label: label, sub: q.short };
         pendingRoot = null;
         advanceCursor();
         buildPad();
@@ -1210,7 +1222,8 @@ function buildPianoPad() {
     if (i < 12 && isSharp(m + 1)) {
       const b = document.createElement('button');
       b.className = 'bkey';
-      b.textContent = NAMES[(m + 1) % 12];
+      const bpc = (m + 1) % 12;                     // 黑鍵：升／降兩行堆疊
+      b.innerHTML = SHARP_PC[bpc] + '<br>' + FLAT_PC[bpc];
       const bopt = byMidi.get(m + 1);
       if (bopt) b.addEventListener('click', () => answerOpt(bopt, b));
       else b.dataset.locked = '1';
