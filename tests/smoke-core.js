@@ -74,6 +74,12 @@
     await runOne(fails, results, 'scale', async () => { tab('scale').click(); await wait(120); });
     await runOne(fails, results, 'chord-quality', async () => { tab('chord').click(); await wait(60); await setGoal('quality'); });
     await runOne(fails, results, 'chord-name', async () => { await setGoal('name'); });
+    // 單音的鋼琴鍵模式（單八度＋八度切換）：確認 buildPianoPad 能正常出題作答
+    await runOne(fails, results, 'single-piano', async () => {
+      tab('single').click(); await wait(80);
+      const seg = document.querySelector('#padToggle [data-pad="piano"]');
+      if (seg) { seg.click(); await wait(80); }
+    });
     return { pass: fails.length === 0, results: results, fails: fails };
   };
 })();
