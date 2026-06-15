@@ -148,6 +148,15 @@
   button.wkey.flash, button.bkey.flash {
     background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important;
   }
+  .piano-octave { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .oct-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .piano-row { display: flex; align-items: center; gap: 10px; }
+  button.oct-btn {
+    width: 40px; height: 90px; border-radius: 10px; font-size: 18px; padding: 0;
+    background: #eef1ff; border: 1px solid #c9d2f5; color: var(--accent); font-weight: 700;
+    flex: 0 0 auto;
+  }
+  button.oct-btn:hover:not(:disabled) { background: #e0e6ff; }
 
   .feedback { text-align: center; font-size: 16px; font-weight: 600; min-height: 24px; margin-bottom: 10px; }
   .feedback.good { color: var(--green); }
@@ -186,9 +195,11 @@
     .controls button { flex: 1 1 40%; padding: 12px 8px; }
     .slot { min-width: 52px; height: 56px; font-size: 15px; }
     .note-btn { min-width: 52px; flex: 1 1 auto; padding: 12px 6px; }
-    .piano { --wk: 38px; }
+    .piano { --wk: 34px; }
     button.wkey { height: 118px; font-size: 11px; }
     button.bkey { height: 72px; }
+    .piano-row { gap: 6px; }
+    button.oct-btn { width: 30px; height: 80px; font-size: 16px; }
     .stats-row { gap: 14px; }
     table.note-stats { font-size: 12px; }
   }
@@ -630,6 +641,7 @@ let padMode = (() => {
 let currentQ = null;     // {seq, slots, pad, info?, twoStage?}
 let answers = [];        // 定長陣列，answers[i] 為第 i 格的選項或 null（可任意位置填／改）
 let cursor = 0;          // 目前作答的格子位置（左右鍵移動、點按鈕替換此格）
+let pianoBase = null;    // 鋼琴鍵模式目前顯示的八度（該八度 C 的 midi）；null = 依音域重設
 let pendingRoot = null;  // 兩段式作答（和弦名稱）：已按根音、待按性質
 const filledCount = () => answers.filter(a => a != null).length;
 let phase = 'idle';      // idle | playing | answering | checked
@@ -689,7 +701,7 @@ const gapBase = () => +speedSel.value;
 function rangeNotes(includeSharps) {
   let lo = +lowSel.value, hi = +highSel.value;
   if (lo > hi) [lo, hi] = [hi, lo];
-  if (hi - lo > 24) hi = lo + 24; // 答案鈕最多兩個八度
+  // 不再限制兩個八度：鋼琴鍵模式改用「單八度＋八度切換」，寬音域也不變形
   const notes = [];
   for (let m = lo; m <= hi; m++) {
     if (!includeSharps && isSharp(m)) continue;
@@ -934,6 +946,7 @@ function newQuestion() {
   currentQ = q;
   answers = new Array(q.slots.length).fill(null);
   cursor = 0;
+  pianoBase = null;        // 每題重設顯示八度（依音域，不洩漏答案）
   pendingRoot = null;
   phase = 'idle';
   buildSlots();
@@ -1103,13 +1116,29 @@ function buildButtonsPad() {
 }
 
 // 鋼琴鍵盤：畫出題目音域內的白鍵與黑鍵；不在作答選項內的黑鍵鎖定變灰
+// 單八度鍵盤 + 八度切換：鍵盤永遠只畫一個八度（C..C），用 ◀ ▶ 換八度，
+// 寬音域也不變形、手機不必左右捲。顯示哪個八度由 pianoBase（該八度 C 的 midi）決定。
 function buildPianoPad() {
-  const byMidi = new Map(currentQ.pad.map(o => [o.midi, o]));
   const midis = currentQ.pad.map(o => o.midi);
   const lo = Math.min(...midis), hi = Math.max(...midis);
+  const cOf = m => m - (((m % 12) + 12) % 12);   // 不大於 m 的最近 C
+  const minBase = cOf(lo), maxBase = cOf(hi);
+  if (pianoBase == null || pianoBase < minBase || pianoBase > maxBase) pianoBase = minBase;
+  const byMidi = new Map(currentQ.pad.map(o => [o.midi, o]));
+
+  const octBtn = (txt, atEdge, onClick) => {
+    const b = document.createElement('button');
+    b.className = 'oct-btn';
+    b.textContent = txt;
+    if (atEdge) b.dataset.locked = '1';          // 邊界鎖定（updateButtons 會據此停用）
+    else b.addEventListener('click', onClick);
+    return b;
+  };
+
   const piano = document.createElement('div');
   piano.className = 'piano';
-  for (let m = lo; m <= hi; m++) {
+  for (let i = 0; i <= 12; i++) {                // C..C：8 白鍵 + 5 黑鍵
+    const m = pianoBase + i;
     if (isSharp(m)) continue;
     const wrap = document.createElement('span');
     wrap.className = 'wkey-wrap';
@@ -1120,7 +1149,7 @@ function buildPianoPad() {
     if (wopt) w.addEventListener('click', () => answerOpt(wopt, w));
     else w.dataset.locked = '1';
     wrap.appendChild(w);
-    if (m + 1 <= hi && isSharp(m + 1)) {
+    if (i < 12 && isSharp(m + 1)) {
       const b = document.createElement('button');
       b.className = 'bkey';
       b.textContent = NAMES[(m + 1) % 12];
@@ -1131,7 +1160,24 @@ function buildPianoPad() {
     }
     piano.appendChild(wrap);
   }
-  padEl.appendChild(piano);
+
+  const row = document.createElement('div');
+  row.className = 'piano-row';
+  row.appendChild(octBtn('◀', pianoBase <= minBase, () => { pianoBase -= 12; buildPad(); }));
+  row.appendChild(piano);
+  row.appendChild(octBtn('▶', pianoBase >= maxBase, () => { pianoBase += 12; buildPad(); }));
+
+  const label = document.createElement('div');
+  label.className = 'oct-label';
+  const canShift = minBase !== maxBase;
+  label.textContent = pitchName(pianoBase) + '–' + pitchName(pianoBase + 12) + ' 八度'
+    + (canShift ? '（◀ ▶ 換八度）' : '');
+
+  const box = document.createElement('div');
+  box.className = 'piano-octave';
+  box.appendChild(label);
+  box.appendChild(row);
+  padEl.appendChild(box);
 }
 
 function flash(btn) {
@@ -1290,6 +1336,7 @@ function resetQuestion() {
   currentQ = null;
   answers = [];
   cursor = 0;
+  pianoBase = null;
   pendingRoot = null;
   phase = 'idle';
   slotsEl.innerHTML = '';
