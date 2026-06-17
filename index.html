@@ -380,19 +380,27 @@ const INTERVALS = [
 const IV_DEFAULT = ['大二度', '大三度', '完全四度', '完全五度', '完全八度'];
 
 // 音階：steps 為上行的半音偏移（含高八度主音）；旋律小調下行依慣例改用自然小調（descSteps）
+// pattern = 一個八度內的半音偏移（不含高八度主音）。播放時一律延伸成固定 8 音
+// （五聲、藍調等音數少的會繼續往上跨進下一個八度補滿），使各音階播放音數一致，
+// 不能靠「數音數」猜出是哪種音階。descPattern 供旋律小調下行用（自然小調）。
+const SCALE_LEN = 8;
 const SCALES = [
-  { name: '大調',       steps: [0, 2, 4, 5, 7, 9, 11, 12] },
-  { name: '自然小調',   steps: [0, 2, 3, 5, 7, 8, 10, 12] },
-  { name: '和聲小調',   steps: [0, 2, 3, 5, 7, 8, 11, 12] },
-  { name: '旋律小調',   steps: [0, 2, 3, 5, 7, 9, 11, 12], descSteps: [12, 10, 8, 7, 5, 3, 2, 0] },
-  { name: '大調五聲',   steps: [0, 2, 4, 7, 9, 12] },
-  { name: '小調五聲',   steps: [0, 3, 5, 7, 10, 12] },
-  { name: 'Dorian',     steps: [0, 2, 3, 5, 7, 9, 10, 12] },
-  { name: 'Phrygian',   steps: [0, 1, 3, 5, 7, 8, 10, 12] },
-  { name: 'Lydian',     steps: [0, 2, 4, 6, 7, 9, 11, 12] },
-  { name: 'Mixolydian', steps: [0, 2, 4, 5, 7, 9, 10, 12] },
-  { name: '藍調音階',   steps: [0, 3, 5, 6, 7, 10, 12] }
+  { name: '大調',       pattern: [0, 2, 4, 5, 7, 9, 11] },
+  { name: '自然小調',   pattern: [0, 2, 3, 5, 7, 8, 10] },
+  { name: '和聲小調',   pattern: [0, 2, 3, 5, 7, 8, 11] },
+  { name: '旋律小調',   pattern: [0, 2, 3, 5, 7, 9, 11], descPattern: [0, 2, 3, 5, 7, 8, 10] },
+  { name: '大調五聲',   pattern: [0, 2, 4, 7, 9] },
+  { name: '小調五聲',   pattern: [0, 3, 5, 7, 10] },
+  { name: 'Dorian',     pattern: [0, 2, 3, 5, 7, 9, 10] },
+  { name: 'Phrygian',   pattern: [0, 1, 3, 5, 7, 8, 10] },
+  { name: 'Lydian',     pattern: [0, 2, 4, 6, 7, 9, 11] },
+  { name: 'Mixolydian', pattern: [0, 2, 4, 5, 7, 9, 10] },
+  { name: '藍調音階',   pattern: [0, 3, 5, 6, 7, 10] }
 ];
+// 從主音 root 依 pattern 產生 n 個上行音（不足一個八度者延伸到下一個八度補滿）
+const scaleNotes = (pattern, root, n) =>
+  Array.from({ length: n }, (_, i) =>
+    root + pattern[i % pattern.length] + 12 * Math.floor(i / pattern.length));
 const SCALE_DEFAULT = SCALES.map(s => s.name);
 
 // sym 為標準和弦代號的性質後綴（接在根音後，如 C、Cm、C7、Cmaj7）
@@ -820,12 +828,12 @@ const MODES = {
       const sc = pickFrom(opts);
       const root = randInt(48, 67);            // 主音 C3～G4，舒服的音域
       const gap = gapBase() * 0.55;            // 音階跑動比聽寫單音快
-      const ascend = sc.steps.map(st => root + st);
+      const ascend = scaleNotes(sc.pattern, root, SCALE_LEN);
       let notes = ascend;
       if (scaleDirSel.value === 'updown') {
-        // 下行：旋律小調用 descSteps（自然小調），其他直接反轉；slice(1) 避免最高音重複
-        const desc = (sc.descSteps || [...sc.steps].reverse()).slice(1).map(st => root + st);
-        notes = ascend.concat(desc);
+        // 下行：旋律小調用 descPattern（自然小調），其他直接反轉；slice(1) 避免最高音重複
+        const descSrc = sc.descPattern ? scaleNotes(sc.descPattern, root, SCALE_LEN) : ascend;
+        notes = ascend.concat([...descSrc].reverse().slice(1));
       }
       const seq = notes.map((m, i) => ({
         midis: [m],
@@ -835,11 +843,11 @@ const MODES = {
       }));
       const slots = [{ key: sc.name, label: sc.name, sub: '' }];
       const pad = opts.map(s => ({ key: s.name, label: s.name, sub: '', scale: s }));
-      // 試聽：用同一個主音上行播該音階，方便對照
+      // 試聽：用同一個主音上行播該音階（同樣延伸成固定音數），方便對照
       const preview = opt => {
         const t = ctx.currentTime;
-        opt.scale.steps.forEach((st, i) =>
-          playTone(root + st, t + i * 0.28, 0.3, 0.45, 0.28));
+        scaleNotes(opt.scale.pattern, root, SCALE_LEN).forEach((m, i) =>
+          playTone(m, t + i * 0.28, 0.3, 0.45, 0.28));
       };
       return { seq, slots, pad, preview, info: '主音 ' + pitchName(root) };
     }
