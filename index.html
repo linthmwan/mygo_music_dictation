@@ -221,10 +221,10 @@
 <div class="card">
   <h2>題目設定</h2>
   <div class="settings-grid">
-    <label class="setting" data-modes="single interval chord" id="lowLab">最低音
+    <label class="setting" data-modes="single interval" id="lowLab">最低音
       <select id="lowSel"></select>
     </label>
-    <label class="setting" data-modes="single interval chord" id="highLab">最高音
+    <label class="setting" data-modes="single interval" id="highLab">最高音
       <select id="highSel"></select>
     </label>
     <label class="setting" data-modes="single">每題音數
@@ -271,6 +271,12 @@
         <option value="name">辨認和弦名稱</option>
       </select>
     </label>
+    <label class="setting" data-modes="chord">和弦類型
+      <select id="chordTypeSel">
+        <option value="triad" selected>三和弦</option>
+        <option value="seventh">七和弦</option>
+      </select>
+    </label>
     <label class="setting" data-modes="chord">
       <input type="checkbox" id="invChk"> 包含轉位（更難）</label>
     <label class="setting" data-modes="chord" id="rootSharpsLab">
@@ -292,7 +298,8 @@
   <div class="group-label" data-modes="scale">要練的音階</div>
   <div class="chk-grid" id="scaleChks" data-modes="scale"></div>
   <div class="group-label" data-modes="chord" id="chordChkLabel">要練的和弦</div>
-  <div class="chk-grid" id="chordChks" data-modes="chord"></div>
+  <div class="chk-grid" id="triadChks" data-modes="chord"></div>
+  <div class="chk-grid" id="seventhChks" data-modes="chord"></div>
   <div class="hint" id="hintEl"></div>
 </div>
 
@@ -399,24 +406,38 @@ const scaleNotes = (pattern, root, n) =>
 const SCALE_DEFAULT = SCALES.map(s => s.name);
 
 // sym 為標準和弦代號的性質後綴（接在根音後，如 C、Cm、C7、Cmaj7）
+// type 分三和弦／七和弦（分開練）；noInv = 不做轉位（減三轉位後聽感會像別的和弦）
 const CHORDS = [
-  { short: '大三', name: '大三和弦', sub: 'M',    sym: '',     iv: [0, 4, 7] },
-  { short: '小三', name: '小三和弦', sub: 'm',    sym: 'm',    iv: [0, 3, 7] },
-  { short: '減三', name: '減三和弦', sub: 'dim',  sym: 'dim',  iv: [0, 3, 6] },
-  { short: '屬七', name: '屬七和弦', sub: '7',    sym: '7',    iv: [0, 4, 7, 10] },
-  { short: '大七', name: '大七和弦', sub: 'maj7', sym: 'maj7', iv: [0, 4, 7, 11] },
-  { short: '小七', name: '小七和弦', sub: 'm7',   sym: 'm7',   iv: [0, 3, 7, 10] }
+  { short: '大三', name: '大三和弦', sub: 'M',    sym: '',     iv: [0, 4, 7],     type: 'triad' },
+  { short: '小三', name: '小三和弦', sub: 'm',    sym: 'm',    iv: [0, 3, 7],     type: 'triad' },
+  { short: '減三', name: '減三和弦', sub: 'dim',  sym: 'dim',  iv: [0, 3, 6],     type: 'triad', noInv: true },
+  { short: '屬七', name: '屬七和弦', sub: '7',    sym: '7',    iv: [0, 4, 7, 10], type: 'seventh' },
+  { short: '大七', name: '大七和弦', sub: 'maj7', sym: 'maj7', iv: [0, 4, 7, 11], type: 'seventh' },
+  { short: '小七', name: '小七和弦', sub: 'm7',   sym: 'm7',   iv: [0, 3, 7, 10], type: 'seventh' }
 ];
-const CHORD_DEFAULT = ['大三', '小三'];
+const TRIAD_DEFAULT = ['大三', '小三'];
+const SEVENTH_DEFAULT = ['屬七', '大七', '小七'];
 const INV_NAMES = ['原位', '第一轉位', '第二轉位', '第三轉位'];
-// 第 k 轉位（close position）：把前 k 個音翻高八度後以最低音歸零；
-// 三和弦一律再疊一個高八度的最低音（如原位 C-E-G-C、第一轉位 E-G-C-E），
-// 與七和弦同為四音，避免「音數」洩漏是否轉位。
+// 真實轉位排列（疏開，像 slash chord C/E）：回傳「相對根音」的半音偏移（升冪）。
+// 低音放第 k 個和弦音；其餘和弦音從根音起由低到高疊在低音之上（不擠在一起）。
+// 三和弦於頂部再疊一個高八度根音（保留飽滿音色）。out[0] 即最低音。
+// 例：Cmaj7 一轉 = [4,12,19,23]（E·C·G·B）；大三原位 = [0,4,7,12]（C·E·G·C）。
 function chordVoicing(iv, k) {
-  const rot = iv.slice(k).concat(iv.slice(0, k).map(o => o + 12));
-  const base = rot[0];
-  const v = rot.map(o => o - base);
-  return iv.length === 3 ? [...v, 12] : v;
+  const out = [iv[k]];
+  let prev = iv[k];
+  for (let j = 0; j < iv.length; j++) {
+    if (j === k) continue;
+    let v = iv[j];
+    while (v <= prev) v += 12;
+    out.push(v);
+    prev = v;
+  }
+  if (iv.length === 3) {                 // 三和弦：頂部加高八度根音
+    let r = iv[0];
+    while (r <= out[out.length - 1]) r += 12;
+    out.push(r);
+  }
+  return out;
 }
 
 // ---------- 音訊 ----------
@@ -616,7 +637,8 @@ const lowSel = $('lowSel'), highSel = $('highSel'), countInput = $('countInput')
       speedSel = $('speedSel'), timbreSel = $('timbreSel'), sharpsChk = $('sharpsChk'), refChk = $('refChk'),
       btnSoundChk = $('btnSoundChk'), dirSel = $('dirSel'), scaleDirSel = $('scaleDirSel'),
       chordStyleSel = $('chordStyleSel'), invChk = $('invChk'),
-      chordGoalSel = $('chordGoalSel'), rootSharpsChk = $('rootSharpsChk'), chordRefChk = $('chordRefChk'),
+      chordGoalSel = $('chordGoalSel'), chordTypeSel = $('chordTypeSel'),
+      rootSharpsChk = $('rootSharpsChk'), chordRefChk = $('chordRefChk'),
       playBtn = $('playBtn'), replayBtn = $('replayBtn'), undoBtn = $('undoBtn'),
       submitBtn = $('submitBtn'),
       slotsEl = $('slots'), padEl = $('pad'), feedbackEl = $('feedback');
@@ -652,7 +674,11 @@ function buildChkGroup(container, items, getLabel, getId, defaults) {
 }
 buildChkGroup($('ivChks'), INTERVALS, iv => iv.name, iv => iv.name, IV_DEFAULT);
 buildChkGroup($('scaleChks'), SCALES, s => s.name, s => s.name, SCALE_DEFAULT);
-buildChkGroup($('chordChks'), CHORDS, c => c.name, c => c.short, CHORD_DEFAULT);
+buildChkGroup($('triadChks'), CHORDS.filter(c => c.type === 'triad'), c => c.name, c => c.short, TRIAD_DEFAULT);
+buildChkGroup($('seventhChks'), CHORDS.filter(c => c.type === 'seventh'), c => c.name, c => c.short, SEVENTH_DEFAULT);
+// 目前「和弦類型」選到的那組勾選清單與其勾選的和弦
+const activeChordChks = () => chordTypeSel.value === 'seventh' ? $('seventhChks') : $('triadChks');
+const activeChordShorts = () => checkedOf(activeChordChks());
 const checkedOf = container => [...container.querySelectorAll('input:checked')].map(c => c.value);
 
 // ---------- 狀態 ----------
@@ -851,9 +877,10 @@ const MODES = {
   chord: {
     get statHead() { return chordGoalSel.value === 'name' ? '和弦名' : '和弦'; },
     get hint() {
+      const t = chordTypeSel.value === 'seventh' ? '七和弦' : '三和弦';
       return chordGoalSel.value === 'name'
-        ? '聽和弦答出完整名稱：先按根音、再按性質組成答案（如 C → m7 = Cm7）。沒有絕對音感建議勾「先播參考音」。'
-        : '建議先從大三、小三和弦開始。三和弦會多疊一個高八度的最低音；勾「包含轉位」後和弦會隨機以轉位彈出（七和弦最多到第三轉位），答完會顯示是第幾轉位。';
+        ? '一次練' + t + '。聽和弦答出完整名稱：先按根音、再按性質組成答案（如 C → m7 = Cm7）。沒有絕對音感建議勾「先播參考音」。'
+        : '一次練' + t + '。三和弦頂部疊一個高八度根音。勾「包含轉位」後和弦會以真實疏開排列隨機轉位（減和弦不轉位）；若為轉位會先播一次原位當參考，答完顯示第幾轉位。';
     },
     statDisplay(k) {
       if (chordGoalSel.value === 'name') return '<b>' + k + '</b>';
@@ -874,70 +901,83 @@ const MODES = {
       if (style === 'rand') style = Math.random() < 0.5 ? 'block' : 'arp';
       return style;
     },
-    pushChordSeq(seq, midis, style) {
+    pushChordSeq(seq, midis, style, withSlot) {
       if (style === 'block') {
-        seq.push({ midis, dur: 2.0, gap: gapBase() + 0.7, slot: 0 });
+        seq.push({ midis, dur: 2.0, gap: gapBase() + 0.7, slot: withSlot ? 0 : undefined });
       } else {
         midis.forEach((m, i) => seq.push({
-          midis: [m], dur: 0.7, gap: 0.38, slot: i === 0 ? 0 : undefined
+          midis: [m], dur: 0.7, gap: 0.38, slot: (withSlot && i === 0) ? 0 : undefined
         }));
         seq.push({ midis, dur: 1.8, gap: gapBase() + 0.5 });
       }
     },
+    // 決定這次的轉位：未開或減和弦 → 原位；否則隨機（三和弦到第二、七和弦到第三轉位）
+    pickInv(ch) {
+      return (invChk.checked && !ch.noInv) ? randInt(0, ch.iv.length - 1) : 0;
+    },
+    // 開轉位且這題是轉位時，先播一次原位（同根音 R）當參考，再播題目
+    refSeq(seq, ch, R, inv, style) {
+      if (!invChk.checked || inv === 0) return;
+      this.pushChordSeq(seq, chordVoicing(ch.iv, 0).map(o => R + o), style, false);
+    },
     buildQuality() {
-      const shorts = checkedOf($('chordChks'));
-      const opts = CHORDS.filter(c => shorts.includes(c.short));
+      const opts = CHORDS.filter(c => activeChordShorts().includes(c.short));
       if (opts.length < 2) return { error: '至少勾選兩種和弦才有得猜' };
-      const [lo, hi] = rangeBounds();
+      const lo = 48, hi = 84;          // 和弦用固定寬音域（C3–C6），疏開排列才放得下
       const ch = pickFrom(opts);
-      const inv = invChk.checked ? randInt(0, ch.iv.length - 1) : 0;  // 三和弦到第二轉位、七和弦到第三轉位
+      const inv = this.pickInv(ch);
       const voice = chordVoicing(ch.iv, inv);
-      const span = voice[voice.length - 1];
+      const span = voice[voice.length - 1] - voice[0];
       if (hi - lo < span) return { error: '音域不夠寬，放不下「' + ch.name + '」，請拉開最低／最高音' };
-      const bass = randInt(lo, hi - span);
+      // R = 根音 midi。題目最低音 = R + voice[0]；參考（原位）也要儘量放得下
+      const refTop = (invChk.checked && inv > 0) ? chordVoicing(ch.iv, 0).slice(-1)[0] : voice[voice.length - 1];
+      const needTop = Math.max(voice[voice.length - 1], refTop);
+      let Rlo = lo - voice[0], Rhi = hi - needTop;
+      if (Rhi < Rlo) Rhi = hi - voice[voice.length - 1];  // 參考放不下就退而保證題目放得下
+      const R = randInt(Rlo, Math.max(Rlo, Rhi));
       const style = this.resolveStyle();
       const seq = [];
-      this.pushChordSeq(seq, voice.map(o => bass + o), style);
+      this.refSeq(seq, ch, R, inv, style);
+      this.pushChordSeq(seq, voice.map(o => R + o), style, true);
       const slots = [{ key: ch.short, label: ch.short, sub: ch.sub }];
-      const pad = opts.map(c => ({ key: c.short, label: c.short, sub: c.sub, iv: c.iv }));
-      // 試聽：同一個最低音、同一種播法與轉位（三和弦無第三轉位時取餘數），只換性質方便對照
+      const pad = opts.map(c => ({ key: c.short, label: c.short, sub: c.sub, iv: c.iv, noInv: c.noInv }));
+      // 試聽：同一個根音、同播法，依該選項自己的轉位上限取轉位，只換性質方便對照
       const preview = opt => {
         const t = ctx.currentTime;
-        const v = chordVoicing(opt.iv, inv % opt.iv.length);
-        if (style === 'block') v.forEach(o => playTone(bass + o, t, 1.2));
-        else v.forEach((o, i) => playTone(bass + o, t + i * 0.3, 0.6));
+        const oi = (invChk.checked && !opt.noInv) ? inv % opt.iv.length : 0;
+        const v = chordVoicing(opt.iv, oi);
+        if (style === 'block') v.forEach(o => playTone(R + o, t, 1.2));
+        else v.forEach((o, i) => playTone(R + o, t + i * 0.3, 0.6));
       };
-      // 答完顯示「○○和弦・第幾轉位」
       const info = invChk.checked ? ch.name + '・' + INV_NAMES[inv] : null;
       return { seq, slots, pad, preview, info };
     },
     // 辨認和弦名稱：答案 = 根音 + 性質（如 Cm7），兩段式作答；轉位時仍以原位名稱作答
     buildName() {
-      const shorts = checkedOf($('chordChks'));
-      const opts = CHORDS.filter(c => shorts.includes(c.short));
+      const opts = CHORDS.filter(c => activeChordShorts().includes(c.short));
       if (!opts.length) return { error: '至少勾選一種和弦' };
-      // 名稱題不用「最低／最高音」設定：固定 C3–E5 的舒適音域，任何根音、任何轉位都放得下
-      const lo = 48, hi = 76;
+      // 名稱題用固定寬音域（C3–C6），疏開排列才放得下
+      const lo = 48, hi = 84;
       const pcs = rootSharpsChk.checked
         ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         : [0, 2, 4, 5, 7, 9, 11];
       const ch = pickFrom(opts);
       const rootPc = pickFrom(pcs);
-      const inv = invChk.checked ? randInt(0, ch.iv.length - 1) : 0;
-      // 相對「根音」的 voicing：旋轉到第 inv 轉位，三和弦再疊一個高八度最低音
-      let rel = ch.iv.slice(inv).concat(ch.iv.slice(0, inv).map(o => o + 12));
-      if (ch.iv.length === 3) rel = [...rel, rel[0] + 12];
-      // 在音域內找出所有可放下這個 voicing 的根音八度
+      const inv = this.pickInv(ch);
+      const voice = chordVoicing(ch.iv, inv);          // 相對根音的真實轉位排列
+      const refTop = (invChk.checked && inv > 0) ? chordVoicing(ch.iv, 0).slice(-1)[0] : voice[voice.length - 1];
+      const needTop = Math.max(voice[voice.length - 1], refTop);
+      // R = 根音 midi，pitch class 須為 rootPc，且題目與參考都放得下
       const candidates = [];
-      for (let m = lo - 12; m <= hi; m++)
-        if (((m % 12) + 12) % 12 === rootPc && m + rel[0] >= lo && m + rel[rel.length - 1] <= hi)
-          candidates.push(m);
+      for (let R = lo - 24; R <= hi; R++)
+        if (((R % 12) + 12) % 12 === rootPc && R + voice[0] >= lo && R + needTop <= hi) candidates.push(R);
       if (!candidates.length) return { error: '音域不夠寬，放不下這題的和弦，請拉開最低／最高音' };
-      const rootMidi = pickFrom(candidates);
+      const R = pickFrom(candidates);
       const style = this.resolveStyle();
       const seq = [];
       if (chordRefChk.checked) seq.push({ midis: [60], dur: 1.3, gap: gapBase() + 0.5 });
-      this.pushChordSeq(seq, rel.map(o => rootMidi + o), style);
+      this.refSeq(seq, ch, R, inv, style);
+      this.pushChordSeq(seq, voice.map(o => R + o), style, true);
       const slots = [{ key: NAMES[rootPc] + ch.sym, label: pcLabel(rootPc) + ch.sym, sub: ch.short }];
       const twoStage = {
         // keyName = 記分用（升記號）；label = 顯示用（黑鍵同時標升／降）
@@ -945,13 +985,13 @@ const MODES = {
         quals: opts.map(c => ({ sym: c.sym, short: c.short }))
       };
       const info = invChk.checked ? INV_NAMES[inv] : null;
-      // 試聽（對完答案後）：點任一根音，用同性質、同轉位、相近八度彈該根音的和弦對照
+      // 試聽：點任一根音，用同性質、同轉位、相近八度彈該根音的和弦對照
       const preview = r => {
-        let m = rootMidi + (((r.pc - rootPc) % 12) + 12) % 12;
-        if (m - rootMidi > 6) m -= 12;
+        let rr = R + ((((r.pc - rootPc) % 12) + 12) % 12);
+        if (rr - R > 6) rr -= 12;
         const t = ctx.currentTime;
-        if (style === 'block') rel.forEach(o => playTone(m + o, t, 1.2));
-        else rel.forEach((o, i) => playTone(m + o, t + i * 0.3, 0.6));
+        if (style === 'block') voice.forEach(o => playTone(rr + o, t, 1.2));
+        else voice.forEach((o, i) => playTone(rr + o, t + i * 0.3, 0.6));
       };
       return { seq, slots, pad: [], twoStage, preview, info };
     }
@@ -1409,8 +1449,10 @@ function updateChordGoalUI() {
   $('rootSharpsLab').style.display = isName ? '' : 'none';
   $('chordRefLab').style.display = isName ? '' : 'none';
   if (curMode === 'chord') {
-    $('lowLab').style.display = isName ? 'none' : '';
-    $('highLab').style.display = isName ? 'none' : '';
+    // 依「和弦類型」只顯示對應的勾選清單（最低／最高音在和弦模式不使用，已由 data-modes 隱藏）
+    const seventh = chordTypeSel.value === 'seventh';
+    $('triadChks').style.display = seventh ? 'none' : '';
+    $('seventhChks').style.display = seventh ? '' : 'none';
   }
 }
 function switchMode(mode) {
@@ -1425,13 +1467,15 @@ function switchMode(mode) {
   renderStats();
   updateButtons();
 }
-chordGoalSel.addEventListener('change', () => {
+function onChordSettingChange() {
   resetQuestion();
   updateChordGoalUI();
   $('hintEl').textContent = MODES.chord.hint;
   renderStats();
   updateButtons();
-});
+}
+chordGoalSel.addEventListener('change', onChordSettingChange);
+chordTypeSel.addEventListener('change', onChordSettingChange);
 $('tabs').addEventListener('click', e => {
   const b = e.target.closest('.tab');
   if (b && b.dataset.mode !== curMode) switchMode(b.dataset.mode);
