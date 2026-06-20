@@ -379,22 +379,17 @@ const INTERVALS = [
 ];
 const IV_DEFAULT = ['大二度', '大三度', '完全四度', '完全五度', '完全八度'];
 
-// 音階：steps 為上行的半音偏移（含高八度主音）；旋律小調下行依慣例改用自然小調（descSteps）
 // pattern = 一個八度內的半音偏移（不含高八度主音）。播放時一律延伸成固定 8 音
 // （五聲、藍調等音數少的會繼續往上跨進下一個八度補滿），使各音階播放音數一致，
-// 不能靠「數音數」猜出是哪種音階。descPattern 供旋律小調下行用（自然小調）。
+// 不能靠「數音數」猜出是哪種音階。descPattern 供下行使用（目前無）。
+// 教會調式與旋律小調以實用性考量先移除。
 const SCALE_LEN = 8;
 const SCALES = [
   { name: '大調',       pattern: [0, 2, 4, 5, 7, 9, 11] },
   { name: '自然小調',   pattern: [0, 2, 3, 5, 7, 8, 10] },
   { name: '和聲小調',   pattern: [0, 2, 3, 5, 7, 8, 11] },
-  { name: '旋律小調',   pattern: [0, 2, 3, 5, 7, 9, 11], descPattern: [0, 2, 3, 5, 7, 8, 10] },
   { name: '大調五聲',   pattern: [0, 2, 4, 7, 9] },
   { name: '小調五聲',   pattern: [0, 3, 5, 7, 10] },
-  { name: 'Dorian',     pattern: [0, 2, 3, 5, 7, 9, 10] },
-  { name: 'Phrygian',   pattern: [0, 1, 3, 5, 7, 8, 10] },
-  { name: 'Lydian',     pattern: [0, 2, 4, 6, 7, 9, 11] },
-  { name: 'Mixolydian', pattern: [0, 2, 4, 5, 7, 9, 10] },
   { name: '藍調音階',   pattern: [0, 3, 5, 6, 7, 10] }
 ];
 // 從主音 root 依 pattern 產生 n 個上行音（不足一個八度者延伸到下一個八度補滿）
@@ -756,7 +751,7 @@ const MODES = {
       if (notes.length < 2) return { error: '範圍太小了，請把最低音和最高音拉開一點' };
       const n = clampCount();
       const seq = [], slots = [];
-      if (refChk.checked) seq.push({ midis: [notes[0]], dur: 0.8, gap: gapBase() + 0.45 });
+      if (refChk.checked) seq.push({ midis: [notes[0]], dur: 1.3, gap: gapBase() + 0.45 });
       let prev = null;
       for (let i = 0; i < n; i++) {
         let m;
@@ -764,7 +759,7 @@ const MODES = {
         while (n > 1 && m === prev && notes.length > 2 && Math.random() < 0.6);
         prev = m;
         slots.push({ key: pitchName(m), label: noteLabel(m), sub: solLabel(m) });
-        seq.push({ midis: [m], dur: 0.9, gap: gapBase(), slot: i });
+        seq.push({ midis: [m], dur: 1.4, gap: gapBase(), slot: i });
       }
       const pad = notes.map(m => ({
         key: pitchName(m), label: noteLabel(m), sub: solLabel(m),
@@ -791,13 +786,13 @@ const MODES = {
       const root = (dir === 'down') ? randInt(lo + iv.s, hi) : randInt(lo, hi - iv.s);
       const seq = [];
       if (dir === 'harm') {
-        seq.push({ midis: [root, root + iv.s], dur: 1.4, gap: gapBase() + 0.6, slot: 0 });
+        seq.push({ midis: [root, root + iv.s], dur: 1.9, gap: gapBase() + 0.6, slot: 0 });
       } else if (dir === 'up') {
-        seq.push({ midis: [root], dur: 0.9, gap: gapBase(), slot: 0 });
-        seq.push({ midis: [root + iv.s], dur: 0.9, gap: gapBase() });
+        seq.push({ midis: [root], dur: 1.4, gap: gapBase(), slot: 0 });
+        seq.push({ midis: [root + iv.s], dur: 1.4, gap: gapBase() });
       } else {
-        seq.push({ midis: [root], dur: 0.9, gap: gapBase(), slot: 0 });
-        seq.push({ midis: [root - iv.s], dur: 0.9, gap: gapBase() });
+        seq.push({ midis: [root], dur: 1.4, gap: gapBase(), slot: 0 });
+        seq.push({ midis: [root - iv.s], dur: 1.4, gap: gapBase() });
       }
       const slots = [{ key: iv.name, label: iv.name, sub: iv.s + ' 半音' }];
       const pad = opts.map(o => ({ key: o.name, label: o.name, sub: o.s + ' 半音', s: o.s }));
@@ -818,7 +813,7 @@ const MODES = {
 
   scale: {
     statHead: '音階',
-    hint: '從隨機主音播一條音階，判斷它是哪種音階。「上行＋下行」時旋律小調的下行會照慣例改用自然小調。',
+    hint: '從隨機主音播一條音階，判斷它是哪種音階。可選只上行或上行＋下行。',
     statDisplay: k => '<b>' + k + '</b>',
     orderIndex: k => SCALES.findIndex(s => s.name === k),
     build() {
@@ -881,12 +876,12 @@ const MODES = {
     },
     pushChordSeq(seq, midis, style) {
       if (style === 'block') {
-        seq.push({ midis, dur: 1.5, gap: gapBase() + 0.7, slot: 0 });
+        seq.push({ midis, dur: 2.0, gap: gapBase() + 0.7, slot: 0 });
       } else {
         midis.forEach((m, i) => seq.push({
           midis: [m], dur: 0.7, gap: 0.38, slot: i === 0 ? 0 : undefined
         }));
-        seq.push({ midis, dur: 1.3, gap: gapBase() + 0.5 });
+        seq.push({ midis, dur: 1.8, gap: gapBase() + 0.5 });
       }
     },
     buildQuality() {
@@ -941,7 +936,7 @@ const MODES = {
       const rootMidi = pickFrom(candidates);
       const style = this.resolveStyle();
       const seq = [];
-      if (chordRefChk.checked) seq.push({ midis: [60], dur: 0.8, gap: gapBase() + 0.5 });
+      if (chordRefChk.checked) seq.push({ midis: [60], dur: 1.3, gap: gapBase() + 0.5 });
       this.pushChordSeq(seq, rel.map(o => rootMidi + o), style);
       const slots = [{ key: NAMES[rootPc] + ch.sym, label: pcLabel(rootPc) + ch.sym, sub: ch.short }];
       const twoStage = {
