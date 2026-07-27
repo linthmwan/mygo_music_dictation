@@ -251,6 +251,8 @@
       <input type="checkbox" id="sharpsChk"> 包含黑鍵（升／降）</label>
     <label class="setting" data-modes="single">
       <input type="checkbox" id="refChk" checked> 每題先播參考音（最低音）</label>
+    <label class="setting" data-modes="single">
+      <input type="checkbox" id="scaleRefChk"> 題前先播 C 大調音階</label>
     <label class="setting" data-modes="interval">方向
       <select id="dirSel">
         <option value="up" selected>上行</option>
@@ -367,6 +369,35 @@ const FLAT_SOL  = ['Do', 'Re♭', 'Re', 'Mi♭', 'Mi', 'Fa', 'Sol♭', 'Sol', 'L
 const pc12 = m => (((m % 12) + 12) % 12);
 const pcLabel = pc => isSharp(pc) ? SHARP_PC[pc] + '/' + FLAT_PC[pc] : SHARP_PC[pc];
 const noteLabel = m => pcLabel(pc12(m)) + (Math.floor(m / 12) - 1);
+// 精簡音名（只用升記號），用於空間有限的地方
+const shortName = m => SHARP_PC[pc12(m)] + (Math.floor(m / 12) - 1);
+
+// ---- 依音級拼寫音名：F 往上完全四度是 B♭ 而非 A♯（同音異名，但寫法才正確）----
+const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+const ACC_SYM = { '-2': '𝄫', '-1': '♭', '0': '', '1': '♯', '2': '𝄪' };
+// 以指定字母（li = 字母索引）拼寫某個 midi 音，回傳 {text, acc:升降記號數}
+function spellNote(midi, li) {
+  li = ((li % 7) + 7) % 7;
+  let acc = pc12(midi) - LETTER_PC[li];
+  if (acc > 6) acc -= 12;
+  if (acc < -6) acc += 12;
+  const oct = Math.floor((midi - acc) / 12) - 1;   // 八度以字母的自然音高為準（C♭5 才不會變成 4）
+  return { text: LETTERS[li] + (ACC_SYM[acc] || '') + oct, acc: Math.abs(acc) };
+}
+// 產生「根音 → 目標音」的正確拼法；steps = 兩音相隔的字母級數（如完全四度為 3）
+// 黑鍵根音會在各種拼法中挑升降記號最少的組合
+function spellPair(rootMidi, semis, steps) {
+  let best = null;
+  for (let li = 0; li < 7; li++) {
+    const a = spellNote(rootMidi, li);
+    if (a.acc > 1) continue;                        // 根音不用重升降
+    const b = spellNote(rootMidi + semis, li + steps);
+    const score = a.acc * 3 + b.acc;                // 優先讓根音乾淨
+    if (!best || score < best.score) best = { score, a: a.text, b: b.text };
+  }
+  return best || { a: shortName(rootMidi), b: shortName(rootMidi + semis) };
+}
 const solLabel = m => { const pc = pc12(m); return isSharp(pc) ? SHARP_SOL[pc] + '/' + FLAT_SOL[pc] : SHARP_SOL[pc]; };
 let a4Hz = (() => {
   try { const v = parseFloat(localStorage.getItem('dictationA4')); return (v >= 415 && v <= 466) ? v : 440; }
@@ -376,13 +407,14 @@ const freqOf = m => a4Hz * Math.pow(2, (m - 69) / 12);
 const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pickFrom = arr => arr[Math.floor(Math.random() * arr.length)];
 
+// s = 半音數；st = 字母級數（用於正確拼寫音名，如完全四度跨 3 個字母 F→B）
 const INTERVALS = [
-  { s: 1,  name: '小二度' }, { s: 2,  name: '大二度' },
-  { s: 3,  name: '小三度' }, { s: 4,  name: '大三度' },
-  { s: 5,  name: '完全四度' }, { s: 6,  name: '增四/減五' },
-  { s: 7,  name: '完全五度' }, { s: 8,  name: '小六度' },
-  { s: 9,  name: '大六度' }, { s: 10, name: '小七度' },
-  { s: 11, name: '大七度' }, { s: 12, name: '完全八度' }
+  { s: 1,  name: '小二度',   st: 1 }, { s: 2,  name: '大二度',   st: 1 },
+  { s: 3,  name: '小三度',   st: 2 }, { s: 4,  name: '大三度',   st: 2 },
+  { s: 5,  name: '完全四度', st: 3 }, { s: 6,  name: '增四/減五', st: 3 },
+  { s: 7,  name: '完全五度', st: 4 }, { s: 8,  name: '小六度',   st: 5 },
+  { s: 9,  name: '大六度',   st: 5 }, { s: 10, name: '小七度',   st: 6 },
+  { s: 11, name: '大七度',   st: 6 }, { s: 12, name: '完全八度', st: 7 }
 ];
 const IV_DEFAULT = ['大二度', '大三度', '完全四度', '完全五度', '完全八度'];
 
@@ -635,7 +667,8 @@ const $ = id => document.getElementById(id);
 const lowSel = $('lowSel'), highSel = $('highSel'), countInput = $('countInput'),
       a4Input = $('a4Input'),
       speedSel = $('speedSel'), timbreSel = $('timbreSel'), sharpsChk = $('sharpsChk'), refChk = $('refChk'),
-      btnSoundChk = $('btnSoundChk'), dirSel = $('dirSel'), scaleDirSel = $('scaleDirSel'),
+      btnSoundChk = $('btnSoundChk'), scaleRefChk = $('scaleRefChk'),
+      dirSel = $('dirSel'), scaleDirSel = $('scaleDirSel'),
       chordStyleSel = $('chordStyleSel'), invChk = $('invChk'),
       chordGoalSel = $('chordGoalSel'), chordTypeSel = $('chordTypeSel'),
       rootSharpsChk = $('rootSharpsChk'), chordRefChk = $('chordRefChk'),
@@ -777,6 +810,14 @@ const MODES = {
       if (notes.length < 2) return { error: '範圍太小了，請把最低音和最高音拉開一點' };
       const n = clampCount();
       const seq = [], slots = [];
+      // 題前先跑一遍 C 大調音階（Do Re Mi…Do）建立調性參考，不對應任何格子
+      if (scaleRefChk.checked) {
+        const base = notes[0] - pc12(notes[0]);        // 音域最低音以下最近的 C
+        const g = gapBase() * 0.45;                    // 音階跑動比題目快
+        [0, 2, 4, 5, 7, 9, 11, 12].forEach((st, i) => seq.push({
+          midis: [base + st], dur: 0.5, gap: i === 7 ? gapBase() + 0.6 : g
+        }));
+      }
       if (refChk.checked) seq.push({ midis: [notes[0]], dur: 1.3, gap: gapBase() + 0.45 });
       let prev = null;
       for (let i = 0; i < n; i++) {
@@ -821,19 +862,28 @@ const MODES = {
         seq.push({ midis: [root - iv.s], dur: 1.4, gap: gapBase() });
       }
       const slots = [{ key: iv.name, label: iv.name, sub: iv.s + ' 半音' }];
-      const pad = opts.map(o => ({ key: o.name, label: o.name, sub: o.s + ' 半音', s: o.s }));
+      const pad = opts.map(o => ({ key: o.name, label: o.name, sub: o.s + ' 半音', s: o.s, st: o.st }));
+      // 這個音程從同一個根音出發會是哪兩個音（依音級正確拼寫，如 F→B♭ 而非 F→A♯）
+      const down = dir === 'down';
+      const other = s => down ? root - s : root + s;
+      const pairText = o => {
+        const p = spellPair(root, down ? -o.s : o.s, down ? -o.st : o.st);
+        return p.a + (dir === 'harm' ? ' + ' : ' → ') + p.b;
+      };
       // 試聽：用同一個根音、同一個方向播該音程，方便對照
       const preview = opt => {
         const t = ctx.currentTime;
         if (dir === 'harm') {
-          playTone(root, t, 1.2); playTone(root + opt.s, t, 1.2);
-        } else if (dir === 'up') {
-          playTone(root, t, 0.6); playTone(root + opt.s, t + 0.5, 0.7);
+          playTone(root, t, 1.2); playTone(other(opt.s), t, 1.2);
         } else {
-          playTone(root, t, 0.6); playTone(root - opt.s, t + 0.5, 0.7);
+          playTone(root, t, 0.6); playTone(other(opt.s), t + 0.5, 0.7);
         }
       };
-      return { seq, slots, pad, preview };
+      return {
+        seq, slots, pad, preview,
+        info: pairText(iv),                  // 解答後顯示實際播的兩個音
+        padSubAfter: opt => pairText(opt)    // 解答後每個選項標出會是哪兩個音
+      };
     }
   },
 
@@ -1173,10 +1223,13 @@ function buildButtonsPad() {
   // 單音模式：選項是橫跨多個八度的音高 → 單八度顯示 + ◀▶ 切換（與鋼琴鍵一致）
   if (curMode === 'single') { buildOctaveButtons(); return; }
   // 其他模式：選項非音高（音程／音階／和弦名），平鋪即可
+  // 解答後若題目有提供 padSubAfter，選項下方改標出「會是哪兩個音」
+  const afterSub = (phase === 'checked' && currentQ.padSubAfter) ? currentQ.padSubAfter : null;
   currentQ.pad.forEach(opt => {
     const b = document.createElement('button');
     b.className = 'note-btn' + (opt.dark ? ' sharp' : '');
-    b.innerHTML = opt.label + (opt.sub ? '<small>' + opt.sub + '</small>' : '');
+    const sub = afterSub ? afterSub(opt) : opt.sub;
+    b.innerHTML = opt.label + (sub ? '<small>' + sub + '</small>' : '');
     b.addEventListener('click', () => answerOpt(opt, b));
     padEl.appendChild(b);
   });
@@ -1336,7 +1389,7 @@ function check() {
     feedbackEl.className = 'feedback bad';
   }
   renderStats();
-  updateButtons();
+  buildPad();      // 重建選項（解答後才顯示的音名對照）；內部會呼叫 updateButtons
 }
 
 function undo() {
